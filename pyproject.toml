@@ -1,0 +1,16 @@
+[project]
+name = "my-adk-expert-agent"
+version = "0.1.0"
+description = "ADK Expert Bot using browser-use"
+requires-python = ">=3.11"
+dependencies = [
+    "google-adk",
+    "browser-use",
+    "langchain-google-genai",
+    "google-cloud-secret-manager",
+    "python-dotenv"
+]
+
+[project.scripts]
+# If you had a main entry point for a CLI app, you'd define it here
+# e.g., my-agent = "my_adk_expert_agent.cli:main"
