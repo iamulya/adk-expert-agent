@@ -1,7 +1,8 @@
 # expert-agents/github_issue_fetcher_agent.py
 import re
 import logging
-import json # Ensure json is imported
+import json
+from typing import Any # Ensure json is imported
 from pydantic import BaseModel, Field
 
 from google.adk.agents import Agent as ADKAgent
@@ -49,55 +50,91 @@ def clean_github_issue_text(text: str) -> str:
     return cleaned_text
 
 class GitHubIssueFetcherToolInput(BaseModel):
-    # This agent is now simpler: it receives an issue number and fetches.
-    # The root_agent is responsible for extracting the issue number initially.
     issue_number: str = Field(description="The GitHub issue number for 'google/adk-python'.")
-    # Alternatively, we could pass the full URL if root_agent constructs it.
-    # github_url: Optional[str] = Field(default=None, description="The full URL to the GitHub issue.")
 
 def github_issue_fetcher_after_tool_callback(
     tool: BaseTool,
     args: dict,
-    tool_context: ToolContext,
-    tool_response: str | dict 
+    tool_context: ToolContext, # Context of github_issue_fetcher_agent
+    tool_response: Any # Output from AgentTool(agent=browser_agent)
 ) -> genai_types.Content | None:
-    if tool.name == browser_agent.name:
-        logger.info(f"FetcherAgent (after_tool_callback): Processing response from '{tool.name}'. Raw type: {type(tool_response)}, value: {str(tool_response)[:300]}...")
+    # This callback is for tools called by github_issue_fetcher_agent.
+    # The only tool it calls is AgentTool(agent=browser_agent).
+    if tool.name == browser_agent.name: # browser_agent.name is "browser_utility_agent"
+        logger.info(f"FetcherAgent (after_tool_callback): Processing response from tool '{tool.name}'. Raw response type: {type(tool_response)}, value: {str(tool_response)[:500]}...")
         
-        text_output_from_browser_agent_tool_wrapper = ""
-        if isinstance(tool_response, str):
-            text_output_from_browser_agent_tool_wrapper = tool_response
-        elif isinstance(tool_response, dict) and "text" in tool_response:
-            text_output_from_browser_agent_tool_wrapper = tool_response["text"]
+        # AgentTool typically returns a dictionary. If its sub-agent (browser_agent)
+        # returned Content(parts=[Part(text="SOME_STRING")]), AgentTool might put this
+        # string under a "text" key, or sometimes under a "result" key which could
+        # contain the original Content object or its textual representation.
+        
+        json_string_from_browser_agent = None
+
+        if isinstance(tool_response, dict):
+            if "text" in tool_response and isinstance(tool_response["text"], str):
+                # This is the most common case if browser_agent's callback returned Content(text=json_string)
+                # and AgentTool wrapped it.
+                json_string_from_browser_agent = tool_response["text"]
+            elif "result" in tool_response:
+                # Sometimes AgentTool might put the sub-agent's Content object here.
+                result_val = tool_response["result"]
+                if isinstance(result_val, genai_types.Content) and result_val.parts and \
+                   isinstance(result_val.parts[0], genai_types.Part) and result_val.parts[0].text:
+                    json_string_from_browser_agent = result_val.parts[0].text
+                elif isinstance(result_val, str): # Or it might have already extracted the text
+                    json_string_from_browser_agent = result_val
+                else:
+                    logger.warning(f"FetcherAgent (after_tool_callback): 'result' key found in tool_response but not in expected format. Value: {result_val}")
+            else:
+                logger.warning(f"FetcherAgent (after_tool_callback): tool_response from {tool.name} is a dict but lacks 'text' or 'result' key. Dict: {tool_response}")
+        elif isinstance(tool_response, str):
+            # Less common for AgentTool, but handle if it directly passed the string
+            json_string_from_browser_agent = tool_response
         else:
-            logger.warning(f"FetcherAgent (after_tool_callback): Unexpected response format from {tool.name}. Got: {tool_response}")
-            final_text = "Error: Received unexpected response format from the browser utility."
+            logger.error(f"FetcherAgent (after_tool_callback): Unexpected tool_response format from {tool.name}. Expected str or dict. Got: {type(tool_response)}")
+            final_text = "Error: Internal error processing browser response."
             return genai_types.Content(parts=[genai_types.Part(text=final_text)])
 
+        if not json_string_from_browser_agent:
+            logger.warning(f"FetcherAgent (after_tool_callback): Could not extract a usable string from tool_response: {tool_response}")
+            final_text = "Error: Browser utility returned an unreadable response."
+            return genai_types.Content(parts=[genai_types.Part(text=final_text)])
+
+        logger.info(f"FetcherAgent (after_tool_callback): Extracted JSON string from browser agent wrapper: '{json_string_from_browser_agent[:200]}...'")
+        
         raw_extracted_details = ""
         try:
-            parsed_output = json.loads(text_output_from_browser_agent_tool_wrapper)
+            # browser_agent_after_tool_callback is designed to return a JSON string: '{"extracted_details": "..."}'
+            parsed_output = json.loads(json_string_from_browser_agent)
             if isinstance(parsed_output, dict) and "extracted_details" in parsed_output:
                 raw_extracted_details = parsed_output["extracted_details"]
-            else: # Fallback if JSON structure is not as expected but still valid JSON
-                raw_extracted_details = text_output_from_browser_agent_tool_wrapper
-        except json.JSONDecodeError: # Not JSON, assume it's the direct text
-            raw_extracted_details = text_output_from_browser_agent_tool_wrapper
+                logger.info("FetcherAgent (after_tool_callback): Successfully parsed 'extracted_details'.")
+            else: # Should not happen if browser_agent_after_tool_callback works
+                logger.warning(f"FetcherAgent (after_tool_callback): Parsed JSON was not the expected dict with 'extracted_details'. Parsed: {str(parsed_output)[:200]}")
+                raw_extracted_details = json_string_from_browser_agent # Fallback
+        except json.JSONDecodeError:
+            # This means browser_agent_after_tool_callback didn't return valid JSON.
+            # This could be an error message from browser_agent itself.
+            logger.warning("FetcherAgent (after_tool_callback): Output from browser agent wrapper was not JSON. Using as raw details (might be an error msg).")
+            raw_extracted_details = json_string_from_browser_agent
         
-        if raw_extracted_details and "Error:" not in raw_extracted_details : # Basic check for error propagation
+        if raw_extracted_details and "Error:" not in raw_extracted_details : # Basic check for error string
             cleaned_details = clean_github_issue_text(raw_extracted_details)
             if not cleaned_details:
                 final_text = "The fetched GitHub issue content appears to be empty or contained only template text. No specific details to analyze."
             else:
                 final_text = f"---BEGIN CLEANED ISSUE TEXT---\n{cleaned_details}\n---END CLEANED ISSUE TEXT---"
         else: 
-            final_text = "The browser tool could not fetch or extract content from the GitHub issue. Please ensure the URL is correct or try again later."
+            final_text = "The browser tool could not fetch or extract content from the GitHub issue."
             if raw_extracted_details and "Error:" in raw_extracted_details:
-                 final_text = raw_extracted_details # Relay specific error
+                 final_text = raw_extracted_details # Relay the specific error message from browser/fetcher
 
         logger.info(f"FetcherAgent (after_tool_callback): Returning direct content: {final_text[:100]}...")
+        # THIS RETURN VALUE BYPASSES github_issue_fetcher_agent's LLM
         return genai_types.Content(parts=[genai_types.Part(text=final_text)])
-    return None
+    
+    logger.warning(f"FetcherAgent (after_tool_callback): Callback triggered for unexpected tool: {tool.name}")
+    return None # No action for other tools
 
 def github_issue_fetcher_instruction_provider(context: ReadonlyContext) -> str:
     issue_number_str = None
@@ -111,22 +148,20 @@ def github_issue_fetcher_instruction_provider(context: ReadonlyContext) -> str:
         first_part_text = invocation_ctx.user_content.parts[0].text
         if first_part_text:
             try:
-                # Expecting input like {"issue_number": "123"} from root_agent
                 input_data = GitHubIssueFetcherToolInput.model_validate_json(first_part_text)
                 issue_number_str = input_data.issue_number
                 logger.info(f"FetcherAgent (instruction_provider): Received issue_number: '{issue_number_str}'.")
             except Exception as e:
                 logger.error(f"FetcherAgent (instruction_provider): Could not parse issue_number from input '{first_part_text}': {e}")
-                # This agent should ideally always receive an issue_number now.
-                # If not, it's an error in how root_agent called it.
                 return "Error: This agent expects an issue number to be provided by the calling agent."
     
     if issue_number_str:
         github_url = f"https://github.com/google/adk-python/issues/{issue_number_str}"
         logger.info(f"FetcherAgent (instruction_provider): Instructing LLM to call browser_agent for URL: {github_url}")
+        # This instruction tells the FetcherAgent's LLM to make a tool call.
+        # The after_tool_callback will then intercept the browser_agent's output.
         return f"Your task is to call the '{browser_agent.name}' tool with the URL '{github_url}'. This is your only action for this turn. Do not add any conversational text."
     else:
-        # This path should ideally not be reached if root_agent calls this tool correctly.
         logger.error("FetcherAgent (instruction_provider): No issue_number was provided or parsed. This indicates an issue with how this agent was called.")
         return "Error: No issue number was provided to fetch."
 
@@ -136,9 +171,9 @@ github_issue_fetcher_agent = ADKAgent(
     model=Gemini(model=DEFAULT_MODEL_NAME),
     instruction=github_issue_fetcher_instruction_provider,
     tools=[
-        AgentTool(agent=browser_agent)
+        AgentTool(agent=browser_agent) # This is browser_utility_agent
     ],
-    input_schema=GitHubIssueFetcherToolInput, # Expects issue_number
+    input_schema=GitHubIssueFetcherToolInput,
     before_model_callback=log_prompt_before_model_call,
     after_tool_callback=github_issue_fetcher_after_tool_callback,
     disallow_transfer_to_parent=True,
