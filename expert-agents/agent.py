@@ -1,8 +1,8 @@
 # expert-agents/agent.py
-import json
 import os
 import logging
-import re # Make sure re is imported
+import re
+import json # Ensure json is imported
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -15,7 +15,7 @@ from google.genai import types as genai_types
 
 from .context_loader import get_escaped_adk_context_for_llm
 from .github_issue_fetcher_agent import github_issue_fetcher_agent, GitHubIssueFetcherInput
-from .adk_guidance_agent import adk_guidance_agent, AdkGuidanceInput # AdkGuidanceInput only needs document_text
+from .adk_guidance_agent import adk_guidance_agent, AdkGuidanceInput
 from .config import DEFAULT_MODEL_NAME
 from .callbacks import log_prompt_before_model_call
 from .tools import get_gemini_api_key_from_secret_manager
@@ -31,12 +31,12 @@ def get_text_from_content(content: genai_types.Content) -> str:
 def root_agent_instruction_provider(context: ReadonlyContext) -> str:
     adk_context_for_llm = get_escaped_adk_context_for_llm()
     
-    last_event = None
     cleaned_issue_details_from_fetcher = None
     fetcher_asked_for_issue_number = False
     fetcher_reported_empty = False
+    guidance_agent_was_called = False # New flag
+    guidance_agent_response_text = None # To store guidance agent's response
 
-    # Access the full InvocationContext if needed for more details
     invocation_ctx = None
     if hasattr(context, '_invocation_context'):
         invocation_ctx = context._invocation_context
@@ -49,90 +49,111 @@ def root_agent_instruction_provider(context: ReadonlyContext) -> str:
         potential_tool_call_event = invocation_ctx.session.events[-2]
 
         if potential_tool_call_event.author == root_agent.name and \
-           potential_tool_call_event.get_function_calls() and \
-           potential_tool_call_event.get_function_calls()[0].name == github_issue_fetcher_agent.name:
+           potential_tool_call_event.get_function_calls():
             
-            if potential_tool_response_event.get_function_responses():
-                tool_response_part = potential_tool_response_event.get_function_responses()[0]
-                if tool_response_part.name == github_issue_fetcher_agent.name:
-                    tool_output_content_text = ""
-                    if isinstance(tool_response_part.response, dict) and "text" in tool_response_part.response:
-                        tool_output_content_text = tool_response_part.response["text"]
-                    elif isinstance(tool_response_part.response, str):
-                        tool_output_content_text = tool_response_part.response
+            called_tool_name = potential_tool_call_event.get_function_calls()[0].name
 
-                    if "Please provide the GitHub issue number" in tool_output_content_text:
-                        fetcher_asked_for_issue_number = True
-                        logger.info("RootAgent: Fetcher agent asked for issue number. Relaying to user.")
-                    elif "The fetched GitHub issue content appears to be empty" in tool_output_content_text:
-                        fetcher_reported_empty = True 
-                        cleaned_issue_details_from_fetcher = tool_output_content_text 
-                        logger.info("RootAgent: Fetcher agent reported empty/boilerplate content. Relaying to user.")
-                    elif "---BEGIN CLEANED ISSUE TEXT---" in tool_output_content_text:
-                        match = re.search(r"---BEGIN CLEANED ISSUE TEXT---\n(.*?)\n---END CLEANED ISSUE TEXT---", tool_output_content_text, re.DOTALL)
-                        if match:
-                            cleaned_issue_details_from_fetcher = match.group(1).strip()
-                            logger.info(f"RootAgent: Received cleaned issue details: {cleaned_issue_details_from_fetcher[:100]}...")
-                        else:
-                            logger.warning("RootAgent: Could not parse cleaned issue details from fetcher agent response.")
-                            cleaned_issue_details_from_fetcher = "Error: Could not parse details from fetcher. Will not proceed to guidance."
+            if called_tool_name == github_issue_fetcher_agent.name:
+                if potential_tool_response_event.get_function_responses():
+                    tool_response_part = potential_tool_response_event.get_function_responses()[0]
+                    if tool_response_part.name == github_issue_fetcher_agent.name:
+                        tool_output_content_text = ""
+                        # AgentTool usually returns a dict with "text" for simple text outputs
+                        if isinstance(tool_response_part.response, dict) and "text" in tool_response_part.response:
+                            tool_output_content_text = tool_response_part.response["text"]
+                        elif isinstance(tool_response_part.response, str): # Direct string output
+                            tool_output_content_text = tool_response_part.response
+
+                        if "Please provide the GitHub issue number" in tool_output_content_text:
+                            fetcher_asked_for_issue_number = True
+                            logger.info("RootAgent: Fetcher agent asked for issue number.")
+                        elif "The fetched GitHub issue content appears to be empty" in tool_output_content_text:
                             fetcher_reported_empty = True
-                    elif tool_output_content_text: 
-                        logger.warning(f"RootAgent: Fetcher returned unexpected text: {tool_output_content_text[:200]}. Treating as end of GitHub flow.")
-                        cleaned_issue_details_from_fetcher = tool_output_content_text 
-                        fetcher_reported_empty = True 
+                            cleaned_issue_details_from_fetcher = tool_output_content_text 
+                            logger.info("RootAgent: Fetcher agent reported empty/boilerplate content.")
+                        elif "---BEGIN CLEANED ISSUE TEXT---" in tool_output_content_text:
+                            match = re.search(r"---BEGIN CLEANED ISSUE TEXT---\n(.*?)\n---END CLEANED ISSUE TEXT---", tool_output_content_text, re.DOTALL)
+                            if match:
+                                cleaned_issue_details_from_fetcher = match.group(1).strip()
+                                logger.info(f"RootAgent: Received cleaned issue details: {cleaned_issue_details_from_fetcher[:100]}...")
+                            else:
+                                logger.warning("RootAgent: Could not parse cleaned issue details from fetcher response.")
+                                cleaned_issue_details_from_fetcher = "Error: Could not parse details from fetcher."
+                                fetcher_reported_empty = True
+                        elif tool_output_content_text: 
+                            logger.warning(f"RootAgent: Fetcher returned unexpected text: {tool_output_content_text[:200]}.")
+                            cleaned_issue_details_from_fetcher = tool_output_content_text 
+                            fetcher_reported_empty = True
+            
+            elif called_tool_name == adk_guidance_agent.name:
+                guidance_agent_was_called = True
+                if potential_tool_response_event.get_function_responses():
+                    tool_response_part = potential_tool_response_event.get_function_responses()[0]
+                    if tool_response_part.name == adk_guidance_agent.name:
+                        # Guidance agent output (via AgentTool) should be in response['text']
+                        if isinstance(tool_response_part.response, dict) and "text" in tool_response_part.response:
+                            guidance_agent_response_text = tool_response_part.response["text"]
+                            logger.info(f"RootAgent: Received response from adk_guidance_agent: {guidance_agent_response_text[:100]}...")
+                        elif isinstance(tool_response_part.response, str): # If it somehow returned a direct string
+                             guidance_agent_response_text = tool_response_part.response
+                             logger.info(f"RootAgent: Received direct string response from adk_guidance_agent: {guidance_agent_response_text[:100]}...")
+                        else:
+                            logger.error(f"RootAgent: Unexpected response format from adk_guidance_agent: {tool_response_part.response}")
+                            guidance_agent_response_text = "Error: Could not understand the guidance provided."
+
 
     user_query_text = ""
     if invocation_ctx and hasattr(invocation_ctx, 'user_content') and invocation_ctx.user_content:
         user_query_text = get_text_from_content(invocation_ctx.user_content)
 
-    # Condition to call adk_guidance_agent
-    if cleaned_issue_details_from_fetcher and not fetcher_asked_for_issue_number and not fetcher_reported_empty:
+    # --- Orchestration Logic ---
+    if guidance_agent_was_called:
+        logger.info("RootAgent: Guidance agent was called. Presenting its response as final answer.")
+        # **FIX 1**: Directly use the guidance agent's response.
+        system_instruction = f"""
+You have received a response from the ADK Guidance Agent.
+This is the final answer for the user.
+Present the following text to the user, exactly as it is, without any modifications, summarization, or additional conversational fluff:
+--- ADK GUIDANCE RESPONSE ---
+{guidance_agent_response_text or "No guidance was available."}
+--- END ADK GUIDANCE RESPONSE ---
+"""
+    elif cleaned_issue_details_from_fetcher and not fetcher_asked_for_issue_number and not fetcher_reported_empty:
         logger.info("RootAgent: Preparing to call adk_guidance_agent.")
-        # Construct the exact JSON string for the 'document_text' argument
-        # The LLM needs to create a JSON string like: {"document_text": "..."}
-        # We escape the cleaned_issue_details_from_fetcher to be safely embedded in a JSON string within the prompt.
-        escaped_cleaned_details = json.dumps(cleaned_issue_details_from_fetcher)
-
+        # **FIX 2**: Ensure the LLM only passes the cleaned details for document_text
         system_instruction = f"""
 You are an expert orchestrator for Google's Agent Development Kit (ADK).
 You have received cleaned content which needs ADK-specific guidance.
 Your task is to call the '{adk_guidance_agent.name}' tool.
-You MUST pass the following exact cleaned content as the 'document_text' argument to the tool.
-The argument should be a JSON object like this: {{"document_text": "THE_CLEANED_CONTENT_HERE"}}.
-The cleaned content is:
+The tool expects a JSON argument with a single key 'document_text'.
+The value for 'document_text' MUST BE EXACTLY the following cleaned content, and nothing else:
+--- CLEANED CONTENT TO PASS ---
 {cleaned_issue_details_from_fetcher}
+--- END CLEANED CONTENT TO PASS ---
 
-Construct the 'document_text' argument for the tool using this cleaned content.
-This is your only action for this turn. After calling the tool, its response will be the final answer to the user.
+Construct the JSON argument for the tool like this: {{"document_text": "THE_CLEANED_CONTENT_FROM_ABOVE_HERE"}}.
+This is your only action for this turn. The response from this tool will be the final answer.
 Do not add any conversational fluff before calling the tool.
 """
-    # Condition to call github_issue_fetcher_agent (initial query or user provided issue number)
-    # Or if fetcher asked for issue number, root agent's job is to relay that.
     elif fetcher_asked_for_issue_number:
         logger.info("RootAgent: Fetcher asked for issue number. Relaying to user.")
-        system_instruction = "The previous agent asked for a GitHub issue number. Please relay this request: 'Please provide the GitHub issue number for google/adk-python that you would like me to look into.' This is your final response for this turn."
-    elif fetcher_reported_empty: # If fetcher agent already determined content is empty/boilerplate
+        system_instruction = "The previous agent asked for a GitHub issue number. Your final response for this turn MUST be exactly: 'Please provide the GitHub issue number for google/adk-python that you would like me to look into.'"
+    elif fetcher_reported_empty:
         logger.info("RootAgent: Fetcher reported empty/boilerplate. Relaying its message.")
-        system_instruction = f"Please relay the following message to the user: '{cleaned_issue_details_from_fetcher}' This is your final response for this turn."
+        system_instruction = f"Your final response for this turn MUST be exactly: '{cleaned_issue_details_from_fetcher}'"
     elif "github" in user_query_text.lower() or \
          any(kw in user_query_text.lower() for kw in ["issue", "bug", "ticket", "feature request"]):
         logger.info("RootAgent: Detected GitHub-related query. Calling github_issue_fetcher_agent.")
-        # The LLM needs to construct a JSON string like: {"user_query": "THE_USER_QUERY_HERE"}
-        escaped_user_query = json.dumps(user_query_text)
         system_instruction = f"""
 You are an expert orchestrator for Google's Agent Development Kit (ADK).
-The user's query seems to be about a GitHub issue.
-Your primary action is to call the '{github_issue_fetcher_agent.name}' tool.
-You MUST pass the user's query as the 'user_query' argument to the tool.
-The argument should be a JSON object like this: {{"user_query": "THE_USER_QUERY_HERE"}}.
 The user's query is: "{user_query_text}"
-
-Construct the 'user_query' argument for the tool using the user's query.
-The tool will respond. You will then take that response and decide the next step in a subsequent turn.
-This is your only action for this turn. Do not add any conversational fluff before calling the tool.
+Your primary action is to call the '{github_issue_fetcher_agent.name}' tool.
+The tool expects a JSON argument with a single key 'user_query'.
+The value for 'user_query' MUST BE EXACTLY the user's query provided above.
+Construct the JSON argument like this: {{"user_query": "THE_USER_QUERY_FROM_ABOVE_HERE"}}.
+This is your only action for this turn. The tool will respond, and you will decide the next step based on that response in a subsequent turn.
+Do not add any conversational fluff before calling the tool.
 """
-    # General ADK question
     else:
         logger.info("RootAgent: Detected general ADK query.")
         system_instruction = f"""
@@ -161,7 +182,7 @@ root_agent = ADKAgent(
     before_model_callback=log_prompt_before_model_call,
     generate_content_config=genai_types.GenerateContentConfig(
         temperature=0,
-        max_output_tokens=60000,
+        max_output_tokens=60000, 
         top_p=0.6,
     )
 )

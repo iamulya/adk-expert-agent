@@ -35,7 +35,8 @@ BOILERPLATE_STRINGS_TO_REMOVE = [
     "Expected behavior",
     "Screenshots",
     "Additional context",
-    "Here is the content of the GitHub issue:"
+    "Here is the content of the GitHub issue:",
+    "The content of the GitHub issue is:"
 ]
 
 def clean_github_issue_text(text: str) -> str:
