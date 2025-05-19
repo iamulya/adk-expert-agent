@@ -3,7 +3,7 @@ import logging
 from pydantic import BaseModel
 
 from google.adk.agents import Agent as ADKAgent
-from google.adk.agents.readonly_context import ReadonlyContext
+from google.adk.agents.readonly_context import ReadonlyContext # Stays as ReadonlyContext
 from google.adk.models import Gemini
 from google.genai import types as genai_types
 
@@ -13,23 +13,26 @@ from .callbacks import log_prompt_before_model_call
 from .tools import get_gemini_api_key_from_secret_manager
 
 logger = logging.getLogger(__name__)
-
-# Ensure API key is loaded
 get_gemini_api_key_from_secret_manager()
 
 class AdkGuidanceInput(BaseModel):
-    document_text: str # This is the cleaned issue details
+    document_text: str
 
 def adk_guidance_instruction_provider(context: ReadonlyContext) -> str:
     adk_context_for_llm = get_escaped_adk_context_for_llm()
     
     document_text = ""
 
-    if context.user_content and context.user_content.parts:
-        first_part_text = context.user_content.parts[0].text
+    # CORRECTED: Access user_content via _invocation_context
+    invocation_ctx = None
+    if hasattr(context, '_invocation_context'):
+        invocation_ctx = context._invocation_context
+
+    if invocation_ctx and hasattr(invocation_ctx, 'user_content') and invocation_ctx.user_content and \
+       invocation_ctx.user_content.parts:
+        first_part_text = invocation_ctx.user_content.parts[0].text
         if first_part_text:
             try:
-                # The root_agent will construct a JSON string matching AdkGuidanceInput
                 input_data = AdkGuidanceInput.model_validate_json(first_part_text)
                 document_text = input_data.document_text
                 logger.info(f"ADKGuidanceAgent: Received document_text: '{document_text[:200]}...'")
@@ -37,7 +40,6 @@ def adk_guidance_instruction_provider(context: ReadonlyContext) -> str:
                 logger.error(f"ADKGuidanceAgent: Could not parse input: {e}. Content: {first_part_text}")
                 document_text = "Error: Could not parse the provided document text. The input from the calling agent might be malformed."
     
-    # The ADK context should come first as requested
     instruction = f"""
 You are an expert on Google's Agent Development Kit (ADK) version 0.5.0.
 Your task is to provide guidance and potential solutions based on your comprehensive ADK knowledge and the provided document text.
@@ -63,13 +65,13 @@ adk_guidance_agent = ADKAgent(
     description="Provides expert guidance and solutions related to Google ADK based on provided document text and its ADK knowledge.",
     model=Gemini(model=DEFAULT_MODEL_NAME),
     instruction=adk_guidance_instruction_provider,
-    input_schema=AdkGuidanceInput, # Expects structured input containing only document_text
+    input_schema=AdkGuidanceInput,
     before_model_callback=log_prompt_before_model_call,
     disallow_transfer_to_parent=True, 
     disallow_transfer_to_peers=True,
     generate_content_config=genai_types.GenerateContentConfig(
         temperature=0.1,
-        max_output_tokens=65536,
+        max_output_tokens=60000,
         top_p=0.7,
     )
 )
