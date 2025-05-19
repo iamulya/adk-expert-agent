@@ -1,3 +1,4 @@
+# expert-agents/agent.py
 import os
 import logging
 import re
@@ -36,44 +37,64 @@ async def root_agent_after_tool_callback(
     tool: BaseTool, 
     args: dict,
     tool_context: ToolContext, 
-    tool_response: dict | str
+    tool_response: dict | str # For AgentTool, this is the content of FunctionResponse.response
 ) -> genai_types.Content | None:
     
     invocation_ctx_for_callback = tool_context._invocation_context
 
     if tool.name == github_issue_fetcher_agent.name:
-        logger.info(f"RootAgent (after_tool_callback): Processing response from '{github_issue_fetcher_agent.name}'.")
+        logger.info(f"RootAgent (after_tool_callback): Processing response from '{github_issue_fetcher_agent.name}'. Raw tool_response: {str(tool_response)[:500]}")
         
         fetcher_output_text = ""
-        if isinstance(tool_response, dict) and "text" in tool_response:
-            fetcher_output_text = tool_response["text"]
+        # ** THE CRUCIAL FIX IS HERE **
+        if isinstance(tool_response, dict):
+            # AgentTool often wraps the sub-agent's Content object in a 'result' field
+            # if the sub-agent's callback returned Content.
+            # Or, it might put the direct text output under a 'text' field.
+            if "result" in tool_response and isinstance(tool_response["result"], genai_types.Content):
+                content_obj = tool_response["result"]
+                if content_obj.parts and content_obj.parts[0].text:
+                    fetcher_output_text = content_obj.parts[0].text
+                    logger.info(f"RootAgent (after_tool_callback): Extracted text from tool_response['result'].Content: '{fetcher_output_text[:100]}...'")
+            elif "text" in tool_response and isinstance(tool_response["text"], str):
+                fetcher_output_text = tool_response["text"]
+                logger.info(f"RootAgent (after_tool_callback): Extracted text from tool_response['text']: '{fetcher_output_text[:100]}...'")
+            else:
+                logger.warning(f"RootAgent (after_tool_callback): tool_response dict from {tool.name} did not have expected 'result' (as Content) or 'text' key. Dict: {tool_response}")
         elif isinstance(tool_response, str):
             fetcher_output_text = tool_response
+            logger.info(f"RootAgent (after_tool_callback): tool_response from {tool.name} was a direct string: '{fetcher_output_text[:100]}...'")
         else:
-            logger.error(f"RootAgent (after_tool_callback): Unexpected response format from {github_issue_fetcher_agent.name}: {tool_response}")
-            # Set state to indicate error and re-prompt root_agent's LLM
+            logger.error(f"RootAgent (after_tool_callback): Unexpected response format from {github_issue_fetcher_agent.name}: {type(tool_response)}")
             invocation_ctx_for_callback.session.state["temp:action_for_next_turn"] = "relay_fetcher_error"
-            invocation_ctx_for_callback.session.state["temp:fetcher_error_message"] = "Error: Could not process fetcher agent response."
-            return None 
+            invocation_ctx_for_callback.session.state["temp:fetcher_error_message"] = "Error: Could not process fetcher agent response due to unexpected format."
+            return None
 
+        if not fetcher_output_text: # If extraction failed
+            logger.warning(f"RootAgent (after_tool_callback): Could not extract text from {github_issue_fetcher_agent.name} response.")
+            invocation_ctx_for_callback.session.state["temp:action_for_next_turn"] = "relay_fetcher_error"
+            invocation_ctx_for_callback.session.state["temp:fetcher_error_message"] = "Error: Fetcher agent returned an empty or unreadable response."
+            return None
+
+
+        # Now check content of fetcher_output_text
         if "---BEGIN CLEANED ISSUE TEXT---" in fetcher_output_text:
             match = re.search(r"---BEGIN CLEANED ISSUE TEXT---\n(.*?)\n---END CLEANED ISSUE TEXT---", fetcher_output_text, re.DOTALL)
             if match:
                 cleaned_details = match.group(1).strip()
-                logger.info(f"RootAgent (after_tool_callback): Storing cleaned details for guidance trigger. Details: {cleaned_details[:100]}...")
+                logger.info(f"RootAgent (after_tool_callback): Storing cleaned details. Action: call_guidance_trigger. Details: {cleaned_details[:100]}...")
                 invocation_ctx_for_callback.session.state["temp:cleaned_details_for_guidance"] = cleaned_details
                 invocation_ctx_for_callback.session.state["temp:action_for_next_turn"] = "call_guidance_trigger"
-                return None 
             else: 
-                logger.error("RootAgent (after_tool_callback): Could not parse details from fetcher_output_text despite markers.")
+                logger.error("RootAgent (after_tool_callback): Markers found but could not parse details from fetcher_output_text.")
                 invocation_ctx_for_callback.session.state["temp:action_for_next_turn"] = "relay_fetcher_error"
-                invocation_ctx_for_callback.session.state["temp:fetcher_error_message"] = "Error: System could not parse the fetched issue details."
-                return None
-        else: # This means fetcher returned an error or "empty" or "ask for number" message
-            logger.info(f"RootAgent (after_tool_callback): Fetcher returned a direct message: {fetcher_output_text}. Storing to relay.")
+                invocation_ctx_for_callback.session.state["temp:fetcher_error_message"] = "Error: System could not parse the fetched issue details despite markers."
+        else: # This means fetcher returned "ask for number", "empty/boilerplate", or an error from its own callback
+            logger.info(f"RootAgent (after_tool_callback): Fetcher returned a direct message (no markers): '{fetcher_output_text}'. Storing to relay.")
             invocation_ctx_for_callback.session.state["temp:action_for_next_turn"] = "relay_fetcher_message"
             invocation_ctx_for_callback.session.state["temp:fetcher_message"] = fetcher_output_text
-            return None 
+        
+        return None # Re-prompt root_agent's LLM based on the new state
 
     elif tool.name == TRIGGER_GUIDANCE_TOOL_NAME:
         logger.info(f"RootAgent (after_tool_callback): Caught '{TRIGGER_GUIDANCE_TOOL_NAME}' trigger.")
@@ -105,9 +126,13 @@ async def root_agent_after_tool_callback(
         except Exception as e:
             logger.error(f"RootAgent (after_tool_callback): Error manually invoking adk_guidance_agent: {e}", exc_info=True)
             return genai_types.Content(parts=[genai_types.Part(text=f"Internal Error: Could not get guidance due to: {e}")])
+    
+    logger.warning(f"RootAgent (after_tool_callback): Callback triggered for unhandled tool: {tool.name}")
     return None
 
-
+# --- root_agent_instruction_provider and other definitions remain the same ---
+# (No changes needed for root_agent_instruction_provider from the previous version
+# as it relies on the state being correctly set by the after_tool_callback)
 def root_agent_instruction_provider(context: ReadonlyContext) -> str:
     adk_context_for_llm = get_escaped_adk_context_for_llm()
     
@@ -121,12 +146,10 @@ def root_agent_instruction_provider(context: ReadonlyContext) -> str:
         if hasattr(invocation_ctx, 'user_content') and invocation_ctx.user_content:
             user_query_text = get_text_from_content(invocation_ctx.user_content)
         if hasattr(invocation_ctx, 'session') and invocation_ctx.session:
-            # Make a copy for decision making so we don't modify the actual session state here
             session_state = dict(invocation_ctx.session.state) 
 
     action_for_next_turn = session_state.get("temp:action_for_next_turn")
 
-    # --- Orchestration Logic based on state set by after_tool_callback ---
     if action_for_next_turn == "call_guidance_trigger":
         logger.info("RootAgent (instruction_provider): State indicates cleaned details ready. Instructing LLM to call trigger_guidance.")
         system_instruction = f"""
@@ -134,8 +157,6 @@ You are an expert orchestrator. Details for a GitHub issue have been fetched and
 Your ONLY task now is to call the function '{TRIGGER_GUIDANCE_TOOL_NAME}'. Do not provide any arguments to it.
 This call will trigger the ADK guidance. Do not add any other text.
 """
-        # State `temp:cleaned_details_for_guidance` will be used by after_tool_callback for TRIGGER_GUIDANCE_TOOL_NAME
-        # We can clear action_for_next_turn as it's consumed now.
         if invocation_ctx and hasattr(invocation_ctx, 'session'):
             invocation_ctx.session.state.pop("temp:action_for_next_turn", None)
 
@@ -144,12 +165,11 @@ This call will trigger the ADK guidance. Do not add any other text.
         fetcher_message = session_state.get("temp:fetcher_message", "An unknown issue occurred with fetching details.")
         logger.info(f"RootAgent (instruction_provider): State indicates relaying fetcher message: {fetcher_message}")
         system_instruction = f"Your final response for this turn MUST be exactly: '{fetcher_message}'"
-        if invocation_ctx and hasattr(invocation_ctx, 'session'): # Clean up all related temp state
+        if invocation_ctx and hasattr(invocation_ctx, 'session'): 
             invocation_ctx.session.state.pop("temp:action_for_next_turn", None)
             invocation_ctx.session.state.pop("temp:fetcher_message", None)
             invocation_ctx.session.state.pop("temp:cleaned_details_for_guidance", None) 
-
-    else: # Initial query processing or if no specific action was queued from a previous tool run
+    else: 
         patterns = [
             re.compile(r"(?:issue|ticket|bug|fix|feature|problem|error)\s*(?:number|num|report)?\s*(?:#)?\s*(\d+)(?:\s*(?:on|for|in|related to)\s*google/adk-python)?", re.IGNORECASE),
             re.compile(r"google/adk-python\s*(?:issue|ticket|bug|fix|feature|problem|error)\s*(?:number|num|report)?\s*(?:#)?\s*(\d+)", re.IGNORECASE),
@@ -171,7 +191,6 @@ This call will trigger the ADK guidance. Do not add any other text.
 
         if extracted_issue_number:
             logger.info(f"RootAgent (instruction_provider): Found issue number '{extracted_issue_number}'. Calling fetcher.")
-            # The github_issue_fetcher_agent expects GitHubIssueFetcherToolInput as JSON string
             tool_input_obj = GitHubIssueFetcherToolInput(issue_number=extracted_issue_number)
             tool_arg_json_str = tool_input_obj.model_dump_json()
             
@@ -186,8 +205,7 @@ This is your only action for this turn.
         elif is_github_keywords_present:
             logger.info("RootAgent (instruction_provider): GitHub keywords present, but no issue number. Asking.")
             system_instruction = "Your final response for this turn MUST be exactly: 'It looks like you're asking about a GitHub issue for google/adk-python, but I couldn't find a specific issue number. Please provide the GitHub issue number.'"
-        
-        else: # General ADK question
+        else: 
             logger.info(f"RootAgent (instruction_provider): General ADK query: '{user_query_text}'")
             system_instruction = f"""
 You are an expert on Google's Agent Development Kit (ADK) version 0.5.0.
