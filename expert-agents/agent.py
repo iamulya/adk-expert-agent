@@ -51,19 +51,27 @@ async def root_agent_after_tool_callback(
                 content_obj = tool_response["result"]
                 if content_obj.parts and content_obj.parts[0].text:
                     fetcher_output_text = content_obj.parts[0].text
+                    logger.info(f"RootAgent (after_tool_callback): Extracted text from tool_response['result'].Content: '{fetcher_output_text[:100]}...'")
             elif "text" in tool_response and isinstance(tool_response["text"], str):
                 fetcher_output_text = tool_response["text"]
+                logger.info(f"RootAgent (after_tool_callback): Extracted text from tool_response['text']: '{fetcher_output_text[:100]}...'")
+            else:
+                logger.warning(f"RootAgent (after_tool_callback): tool_response dict from {tool.name} did not have expected 'result' (as Content) or 'text' key. Dict: {tool_response}")
         elif isinstance(tool_response, str):
             fetcher_output_text = tool_response
-        
-        if not fetcher_output_text:
-            logger.warning(f"RootAgent (after_tool_callback): Could not extract text from {github_issue_fetcher_agent.name} response. Raw: {tool_response}")
-            # Let root_agent's LLM handle this error message in the next turn
+            logger.info(f"RootAgent (after_tool_callback): tool_response from {tool.name} was a direct string: '{fetcher_output_text[:100]}...'")
+        else:
+            logger.error(f"RootAgent (after_tool_callback): Unexpected response format from {github_issue_fetcher_agent.name}: {type(tool_response)}")
+            invocation_ctx_for_callback.session.state["temp:action_for_next_turn"] = "relay_fetcher_error"
+            invocation_ctx_for_callback.session.state["temp:fetcher_error_message"] = "Error: Could not process fetcher agent response due to unexpected format."
+            return None
+
+        if not fetcher_output_text: 
+            logger.warning(f"RootAgent (after_tool_callback): Could not extract text from {github_issue_fetcher_agent.name} response.")
             invocation_ctx_for_callback.session.state["temp:action_for_next_turn"] = "relay_fetcher_error"
             invocation_ctx_for_callback.session.state["temp:fetcher_error_message"] = "Error: Fetcher agent returned an empty or unreadable response."
-            return None # Re-prompt root_agent's LLM
+            return None
 
-        # Check content of fetcher_output_text
         if "---BEGIN CLEANED ISSUE TEXT---" in fetcher_output_text:
             match = re.search(r"---BEGIN CLEANED ISSUE TEXT---\n(.*?)\n---END CLEANED ISSUE TEXT---", fetcher_output_text, re.DOTALL)
             if match:
@@ -71,25 +79,19 @@ async def root_agent_after_tool_callback(
                 logger.info(f"RootAgent (after_tool_callback): Got cleaned details. Storing. Action: call_guidance_trigger. Details: {cleaned_details[:100]}...")
                 invocation_ctx_for_callback.session.state["temp:cleaned_details_for_guidance"] = cleaned_details
                 invocation_ctx_for_callback.session.state["temp:action_for_next_turn"] = "call_guidance_trigger"
-                # We have the details, allow instruction_provider to set up the trigger tool call
-                return None # Re-prompt root_agent's LLM to call the trigger
+                return None 
             else: 
                 logger.error("RootAgent (after_tool_callback): Markers found but failed to parse details from fetcher.")
-                # Let root_agent's LLM handle this
                 invocation_ctx_for_callback.session.state["temp:action_for_next_turn"] = "relay_fetcher_error"
                 invocation_ctx_for_callback.session.state["temp:fetcher_error_message"] = "Error: System could not parse the fetched issue details despite markers."
                 return None 
         else: 
-            # This is when fetcher returns "Please provide issue number" or an error from its own callback
-            logger.info(f"RootAgent (after_tool_callback): Fetcher returned a direct message (no markers): '{fetcher_output_text}'. This will be relayed by LLM.")
-            # This message should be relayed by the root_agent's LLM in the next turn
+            logger.info(f"RootAgent (after_tool_callback): Fetcher returned a direct message (no markers): '{fetcher_output_text}'. Storing to relay.")
             invocation_ctx_for_callback.session.state["temp:action_for_next_turn"] = "relay_fetcher_message"
             invocation_ctx_for_callback.session.state["temp:fetcher_message"] = fetcher_output_text
-            return None # Re-prompt root_agent's LLM to relay this message
+            return None 
 
     elif tool.name == TRIGGER_GUIDANCE_TOOL_NAME:
-        # This part remains the same - it manually calls guidance and returns Content,
-        # which SHOULD be the final output.
         logger.info(f"RootAgent (after_tool_callback): Caught '{TRIGGER_GUIDANCE_TOOL_NAME}' trigger.")
         cleaned_details = invocation_ctx_for_callback.session.state.get("temp:cleaned_details_for_guidance")
         
@@ -97,36 +99,46 @@ async def root_agent_after_tool_callback(
         invocation_ctx_for_callback.session.state.pop("temp:action_for_next_turn", None)
 
         if not cleaned_details:
-            logger.error("RootAgent (after_tool_callback): No cleaned_details for guidance trigger.")
-            return genai_types.Content(parts=[genai_types.Part(text="Internal Error: Cleaned details missing for guidance.")])
+            logger.error("RootAgent (after_tool_callback): No cleaned_details found in state for guidance trigger.")
+            return genai_types.Content(parts=[genai_types.Part(text="Internal Error: Cleaned details not found for guidance.")])
 
         guidance_agent_tool_instance = next((t for t in root_agent.tools if isinstance(t, AgentTool) and t.agent.name == adk_guidance_agent.name), None)
         
         if not guidance_agent_tool_instance:
-            logger.error("RootAgent (after_tool_callback): Guidance agent tool instance not found.")
-            return genai_types.Content(parts=[genai_types.Part(text="Internal Error: Guidance agent tool not configured.")])
+            logger.error("RootAgent (after_tool_callback): Could not find adk_guidance_agent tool instance.")
+            return genai_types.Content(parts=[genai_types.Part(text="Internal Error: Guidance agent tool not found.")])
 
-        logger.info(f"RootAgent (after_tool_callback): Manually invoking adk_guidance_agent with: {cleaned_details[:100]}...")
+        logger.info(f"RootAgent (after_tool_callback): Manually invoking adk_guidance_agent with details: {cleaned_details[:100]}...")
         try:
             minimal_tool_context_for_guidance_call = ToolContext(invocation_ctx_for_callback)
-            guidance_response_dict = await guidance_agent_tool_instance.run_async(
+            
+            # AgentTool.run_async returns a string if the sub-agent has no output_schema
+            # or a dict if it does. adk_guidance_agent has no output_schema.
+            guidance_agent_output_string = await guidance_agent_tool_instance.run_async(
                 args={"document_text": cleaned_details}, 
                 tool_context=minimal_tool_context_for_guidance_call 
             )
-            guidance_text = (guidance_response_dict or {}).get("text", "Guidance agent did not return text.")
-            logger.info(f"RootAgent (after_tool_callback): Guidance received: {guidance_text[:100]}... Returning as final.")
-            # This Content IS THE FINAL OUTPUT for this entire interaction path
+            
+            # ** THE FIX IS HERE **
+            # guidance_agent_output_string is expected to be the actual guidance text string.
+            if isinstance(guidance_agent_output_string, str):
+                guidance_text = guidance_agent_output_string
+            else:
+                # Fallback if it somehow returned a dict (e.g. if output_schema was added later)
+                guidance_text = (guidance_agent_output_string or {}).get("text", 
+                                                                      f"Guidance agent returned unexpected format: {type(guidance_agent_output_string)}")
+                logger.warning(f"RootAgent: adk_guidance_agent output was not a direct string: {type(guidance_agent_output_string)}. Extracted: {guidance_text[:100]}")
+
+            logger.info(f"RootAgent (after_tool_callback): Guidance received: {guidance_text[:100]}... Returning as final output.")
             return genai_types.Content(parts=[genai_types.Part(text=guidance_text)])
         except Exception as e:
-            logger.error(f"RootAgent (after_tool_callback): Error invoking adk_guidance_agent: {e}", exc_info=True)
-            return genai_types.Content(parts=[genai_types.Part(text=f"Internal Error: Could not get guidance: {e}")])
+            logger.error(f"RootAgent (after_tool_callback): Error manually invoking adk_guidance_agent: {e}", exc_info=True)
+            return genai_types.Content(parts=[genai_types.Part(text=f"Internal Error: Could not get guidance due to: {e}")])
     
-    logger.warning(f"RootAgent (after_tool_callback): Callback for unhandled tool: {tool.name}")
+    logger.warning(f"RootAgent (after_tool_callback): Callback triggered for unhandled tool: {tool.name}")
     return None
 
-# --- root_agent_instruction_provider and other definitions remain the same ---
-# (No changes needed for root_agent_instruction_provider from the previous version
-# as it relies on the state being correctly set by the after_tool_callback)
+
 def root_agent_instruction_provider(context: ReadonlyContext) -> str:
     adk_context_for_llm = get_escaped_adk_context_for_llm()
     
