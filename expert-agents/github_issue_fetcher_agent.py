@@ -1,3 +1,4 @@
+import json
 import re
 import logging
 from pydantic import BaseModel
@@ -48,36 +49,66 @@ class GitHubIssueFetcherInput(BaseModel):
 
 def github_issue_fetcher_after_tool_callback(
     tool: BaseTool,
-    args: dict, # Arguments passed to the tool
-    tool_context: ToolContext, # Context for the tool that was just run
-    tool_response: dict # The raw response from the tool
+    args: dict, 
+    tool_context: ToolContext, 
+    tool_response: dict # This is the output from AgentTool(agent=browser_agent)
 ) -> genai_types.Content | None:
-    """
-    This callback runs after a tool (specifically browser_agent) is called by github_issue_fetcher_agent.
-    It processes the browser_agent's output, cleans it, and returns the exact content
-    that github_issue_fetcher_agent should output, bypassing its own LLM for this step.
-    """
-    # We are interested in the response from the browser_agent
-    if tool.name == browser_agent.name:
-        logger.info("GitHubIssueFetcherAgent (after_tool_callback): Processing browser_agent response.")
-        raw_browser_tool_output = ""
-        if isinstance(tool_response, dict) and "extracted_details" in tool_response:
-            raw_browser_tool_output = tool_response["extracted_details"]
+    if tool.name == browser_agent.name: # Check if this callback is for the browser_agent sub-tool
+        logger.info(f"GitHubIssueFetcherAgent (after_tool_callback): Processing response from tool '{tool.name}'. Raw tool_response: {tool_response}")
+        
+        actual_browser_agent_output_text = ""
+        if isinstance(tool_response, dict) and "text" in tool_response:
+            # AgentTool wraps the sub-agent's final text output in a 'text' field.
+            actual_browser_agent_output_text = tool_response["text"]
+        else:
+            logger.warning(f"GitHubIssueFetcherAgent (after_tool_callback): Unexpected tool_response format from {tool.name}: {tool_response}")
+            final_text = "Error: Received unexpected response format from the browser utility."
+            return genai_types.Content(parts=[genai_types.Part(text=final_text)])
 
-        if raw_browser_tool_output:
-            cleaned_details = clean_github_issue_text(raw_browser_tool_output)
+        logger.info(f"GitHubIssueFetcherAgent (after_tool_callback): Text output from browser_agent (via AgentTool): '{actual_browser_agent_output_text[:200]}...'")
+
+        # Now, we need to see if actual_browser_agent_output_text contains the JSON from ExtractGitHubIssueDetailsTool
+        # The ExtractGitHubIssueDetailsTool itself returns a dict: {"extracted_details": "..."}
+        # The browser_agent's LLM should have been instructed to output this dict (or its string representation).
+        
+        raw_extracted_details = ""
+        try:
+            # Attempt to parse the text output as JSON, assuming browser_agent passed it as such
+            parsed_output = json.loads(actual_browser_agent_output_text)
+            if isinstance(parsed_output, dict) and "extracted_details" in parsed_output:
+                raw_extracted_details = parsed_output["extracted_details"]
+                logger.info("GitHubIssueFetcherAgent (after_tool_callback): Successfully parsed 'extracted_details' from browser_agent's JSON output.")
+            else:
+                # If it's not the expected JSON, we might assume the browser_agent's LLM directly outputted
+                # the content string from ExtractGitHubIssueDetailsTool, or something else.
+                # For robustness, we'll treat actual_browser_agent_output_text as the details if parsing fails
+                # but this indicates the browser_agent's prompt might need adjustment.
+                logger.warning("GitHubIssueFetcherAgent (after_tool_callback): browser_agent output was not the expected JSON with 'extracted_details'. Using the full text output as raw details.")
+                raw_extracted_details = actual_browser_agent_output_text # Fallback
+        except json.JSONDecodeError:
+            # If it's not JSON, it's likely the direct string output of extracted_details
+            # or an error message from browser_agent.
+            logger.info("GitHubIssueFetcherAgent (after_tool_callback): browser_agent output was not JSON. Using as raw details.")
+            raw_extracted_details = actual_browser_agent_output_text
+        except Exception as e:
+            logger.error(f"GitHubIssueFetcherAgent (after_tool_callback): Error processing browser_agent output: {e}")
+            raw_extracted_details = f"Error processing browser agent output: {actual_browser_agent_output_text}"
+
+
+        if raw_extracted_details and "Error processing browser agent output" not in raw_extracted_details :
+            cleaned_details = clean_github_issue_text(raw_extracted_details)
             if not cleaned_details:
                 final_text = "The fetched GitHub issue content appears to be empty or contained only template text. No specific details to analyze."
             else:
                 final_text = f"---BEGIN CLEANED ISSUE TEXT---\n{cleaned_details}\n---END CLEANED ISSUE TEXT---"
-        else: # Browser tool returned nothing or an error handled by the tool itself
+        else: 
             final_text = "The browser tool could not fetch or extract content from the GitHub issue. Please ensure the URL is correct or try again later."
-        
+            if "Error processing browser agent output" in raw_extracted_details: # relay specific error
+                 final_text = raw_extracted_details
+
         logger.info(f"GitHubIssueFetcherAgent (after_tool_callback): Returning direct content: {final_text[:100]}...")
-        # Returning Content here will make it the direct output of the github_issue_fetcher_agent for this turn
         return genai_types.Content(parts=[genai_types.Part(text=final_text)])
     
-    # For any other tool (if any were added), do nothing, let normal LLM processing continue
     return None
 
 
