@@ -1,3 +1,4 @@
+import re
 from google.adk.agents import Agent as ADKAgent
 from google.adk.agents.readonly_context import ReadonlyContext
 from google.adk.models import Gemini
@@ -6,6 +7,8 @@ from google.adk.tools.agent_tool import AgentTool
 from google.genai import types as genai_types
 
 from .browser_agent import browser_agent 
+from .config import DEFAULT_MODEL_NAME
+from .callbacks import log_prompt_before_model_call
 from .tools import get_gemini_api_key_from_secret_manager
 
 # Import the raw context loader from root_agent.py
@@ -112,11 +115,12 @@ Your knowledge base includes the following ADK context:
 
 github_issue_solver_agent = ADKAgent(
     name="github_issue_solver_agent",
-    model=Gemini(model="gemini-2.5-pro-preview-05-06"),
+    model=Gemini(model=DEFAULT_MODEL_NAME),
     instruction=github_issue_agent_instruction_provider,
     tools=[
         AgentTool(agent=browser_agent) 
     ],
+    before_model_callback=log_prompt_before_model_call,
     disallow_transfer_to_peers=True, 
     generate_content_config=genai_types.GenerateContentConfig(
         temperature=0,

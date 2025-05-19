@@ -11,6 +11,8 @@ from google.genai import types as genai_types
 
 from .context_loader import get_escaped_adk_context_for_llm, ADK_CONTEXT_DATA_FILE
 from .github_issue_agent import github_issue_solver_agent 
+from .config import DEFAULT_MODEL_NAME
+from .callbacks import log_prompt_before_model_call
 from .tools import get_gemini_api_key_from_secret_manager
 
 load_dotenv()
@@ -61,11 +63,12 @@ API_KEY = get_gemini_api_key_from_secret_manager()
 
 root_agent = ADKAgent(
     name="adk_expert_bot",
-    model=Gemini(model="gemini-2.5-pro-preview-05-06"),
+    model=Gemini(model=DEFAULT_MODEL_NAME),
     instruction=root_agent_instruction_provider,
     tools=[
         AgentTool(agent=github_issue_solver_agent)
     ],
+    before_model_callback=log_prompt_before_model_call,
     generate_content_config=genai_types.GenerateContentConfig(
         temperature=0,
         max_output_tokens=65536,

@@ -8,6 +8,7 @@ from google.adk.tools import BaseTool, ToolContext
 from browser_use import Agent as BrowserUseAgent
 from browser_use import Browser, BrowserConfig, BrowserContextConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
+from .config import DEFAULT_MODEL_NAME
 
 load_dotenv()
 
@@ -19,16 +20,20 @@ def get_gemini_api_key_from_secret_manager() -> str:
         return _GEMINI_API_KEY
     project_id = os.getenv("GCP_PROJECT_ID")
     secret_id = os.getenv("GEMINI_API_KEY_SECRET_ID")
-    version_id = os.getenv("GEMINI_API_KEY_SECRET_VERSION", "latest")
+    version_id = os.getenv("GEMINI_API_KEY_SECRET_VERSION", "1") 
     if not project_id or not secret_id:
         raise ValueError("GCP_PROJECT_ID and GEMINI_API_KEY_SECRET_ID must be set in .env")
     client = secretmanager.SecretManagerServiceClient()
-    name = f"projects/{project_id}/secrets/{secret_id}/versions/1"
+    # Construct the resource name using the provided version_id or default to "latest"
+    # Note: The original code hardcoded "versions/1". Using the env var makes it more flexible.
+    # If you strictly need version "1", you can set GEMINI_API_KEY_SECRET_VERSION="1" in .env
+    # or revert this line to hardcode "versions/1".
+    name = f"projects/{project_id}/secrets/{secret_id}/versions/{version_id}"
     print(f"Fetching secret: {name}")
     try:
         response = client.access_secret_version(name=name)
         _GEMINI_API_KEY = response.payload.data.decode("UTF-8")
-        os.environ["GOOGLE_API_KEY"] = _GEMINI_API_KEY
+        os.environ["GOOGLE_API_KEY"] = _GEMINI_API_KEY # Important for langchain-google-genai
         print("Successfully fetched API key from Secret Manager.")
         return _GEMINI_API_KEY
     except Exception as e:
@@ -42,10 +47,10 @@ class ExtractGitHubIssueDetailsTool(BaseTool):
             description="Fetches and extracts relevant content (like title, body, comments) from a given GitHub issue URL."
         )
         get_gemini_api_key_from_secret_manager() 
-        self.browser_llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro-preview-05-06", temperature=0)
+        self.browser_llm = ChatGoogleGenerativeAI(model=DEFAULT_MODEL_NAME, temperature=0)
 
     def _get_declaration(self):
-        from google.genai import types as adk_types
+        from google.genai import types as adk_types # Renamed to avoid conflict with standard `types`
         return adk_types.FunctionDeclaration(
             name=self.name,
             description=self.description,
@@ -88,17 +93,24 @@ class ExtractGitHubIssueDetailsTool(BaseTool):
                 )
                 history = await agent.run(max_steps=15)
         finally:
-            await browser.close()
+            await browser.close() # Ensure browser is closed
+            
         if history and history.is_done() and history.is_successful():
             final_content = history.final_result()
             if final_content:
                 print(f"Tool: Successfully extracted content from {url}")
                 return {"extracted_details": final_content}
             else:
+                # It's possible browser-use finishes but extracts nothing if the page is empty or task is too narrow
+                print(f"Tool: browser-use agent finished but returned no content from {url}.")
                 return {"error": f"browser-use agent finished but returned no content from {url}."}
         else:
             error_message = "browser-use agent failed to extract details."
             if history and history.has_errors():
-                error_message += f" Errors: {history.errors()}"
+                # Make sure errors are converted to string if they are not already
+                error_details = ", ".join(map(str, history.errors()))
+                error_message += f" Errors: {error_details}"
+            elif history:
+                error_message += f" Status: {history.status()}" # Provide more context if available
             print(f"Tool: Error extracting content from {url}. {error_message}")
             return {"error": error_message}

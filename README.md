@@ -57,7 +57,7 @@ This will start a local web server (usually on `http://127.0.0.1:8000`) where yo
 
 ## How it Works
 
-*   The agent uses `gemini-2.5-pro-preview-05-06` as its primary LLM.
+*   The agent uses `gemini-2.5-pro-preview-05-06` as its primary LLM. (This model name is centralized in expert-agents/config.py.)
 *   API keys are fetched securely from Google Cloud Secret Manager.
 *   It has access to the content of `google-adk-python-0.5-with-test.txt` for ADK-related queries.
 *   If you ask about a GitHub issue, it will use the `browser-use` library (also powered by Gemini 2.5 Pro Preview) to fetch details from the GitHub issue page before formulating a response.
