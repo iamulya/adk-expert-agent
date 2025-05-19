@@ -1,21 +1,41 @@
 # expert-agents/github_issue_fetcher_agent.py
+import re
 import logging
 import json
 from pydantic import BaseModel, Field
+from typing import Optional, Any
 
 from google.adk.agents import Agent as ADKAgent
 from google.adk.agents.readonly_context import ReadonlyContext
+from google.adk.agents.callback_context import CallbackContext # For after_tool_callback
 from google.adk.models import Gemini
 from google.adk.tools.agent_tool import AgentTool
+from google.adk.tools.base_tool import BaseTool
+from google.adk.tools.tool_context import ToolContext
 from google.genai import types as genai_types
 
-from .browser_agent import browser_agent # browser_agent itself is an ADKAgent
+from .browser_agent import browser_agent
 from .config import DEFAULT_MODEL_NAME
 from .callbacks import log_prompt_before_model_call
 from .tools import get_gemini_api_key_from_secret_manager
 
 logger = logging.getLogger(__name__)
 get_gemini_api_key_from_secret_manager()
+
+BOILERPLATE_STRINGS_TO_REMOVE = [
+    "Is your feature request related to a problem? Please describe.",
+    "Describe the solution you'd like",
+    "Describe alternatives you've considered",
+    "Describe the bug",
+    "Minimal Reproduction",
+    "Minimal steps to reproduce",
+    "Desktop (please complete the following information):",
+    "Please make sure you read the contribution guide and file the issues in the rigth place.",
+    "To Reproduce",
+    "Expected behavior",
+    "Screenshots",
+    "Additional context"
+]
 
 def clean_github_issue_text(text: str) -> str:
     if not text:
@@ -143,7 +163,7 @@ github_issue_fetcher_agent = ADKAgent(
     disallow_transfer_to_peers=True,
     generate_content_config=genai_types.GenerateContentConfig(
         temperature=0,
-        max_output_tokens=20000, # LLM only makes a tool call
+        max_output_tokens=512, # LLM only makes a tool call
         top_p=0.6
     )
 )
