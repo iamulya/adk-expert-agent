@@ -31,18 +31,22 @@ def get_text_from_content(content: genai_types.Content) -> str:
 def root_agent_instruction_provider(context: ReadonlyContext) -> str:
     adk_context_for_llm = get_escaped_adk_context_for_llm()
     
+    last_event = None
     cleaned_issue_details_from_fetcher = None
     fetcher_asked_for_issue_number = False
-    fetcher_reported_empty = False # New flag
+    fetcher_reported_empty = False
 
-    if hasattr(context, '_invocation_context') and \
-       hasattr(context._invocation_context, 'session') and \
-       context._invocation_context.session and \
-       context._invocation_context.session.events and \
-       len(context._invocation_context.session.events) > 1:
+    # Access the full InvocationContext if needed for more details
+    invocation_ctx = None
+    if hasattr(context, '_invocation_context'):
+        invocation_ctx = context._invocation_context
+
+    if invocation_ctx and hasattr(invocation_ctx, 'session') and \
+       invocation_ctx.session and invocation_ctx.session.events and \
+       len(invocation_ctx.session.events) > 1:
         
-        potential_tool_response_event = context._invocation_context.session.events[-1]
-        potential_tool_call_event = context._invocation_context.session.events[-2]
+        potential_tool_response_event = invocation_ctx.session.events[-1]
+        potential_tool_call_event = invocation_ctx.session.events[-2]
 
         if potential_tool_call_event.author == root_agent.name and \
            potential_tool_call_event.get_function_calls() and \
@@ -61,8 +65,7 @@ def root_agent_instruction_provider(context: ReadonlyContext) -> str:
                         fetcher_asked_for_issue_number = True
                         logger.info("RootAgent: Fetcher agent asked for issue number. Relaying to user.")
                     elif "The fetched GitHub issue content appears to be empty" in tool_output_content_text:
-                        fetcher_reported_empty = True # Set flag
-                        # This is a final message to relay, no need to call guidance agent
+                        fetcher_reported_empty = True 
                         cleaned_issue_details_from_fetcher = tool_output_content_text 
                         logger.info("RootAgent: Fetcher agent reported empty/boilerplate content. Relaying to user.")
                     elif "---BEGIN CLEANED ISSUE TEXT---" in tool_output_content_text:
@@ -73,14 +76,15 @@ def root_agent_instruction_provider(context: ReadonlyContext) -> str:
                         else:
                             logger.warning("RootAgent: Could not parse cleaned issue details from fetcher agent response.")
                             cleaned_issue_details_from_fetcher = "Error: Could not parse details from fetcher. Will not proceed to guidance."
-                            fetcher_reported_empty = True # Treat parsing failure as an end state for this flow
-                    # If it's just some other text, it might be an error or unexpected output from fetcher
+                            fetcher_reported_empty = True
                     elif tool_output_content_text: 
                         logger.warning(f"RootAgent: Fetcher returned unexpected text: {tool_output_content_text[:200]}. Treating as end of GitHub flow.")
-                        cleaned_issue_details_from_fetcher = tool_output_content_text # Relay this unexpected message
-                        fetcher_reported_empty = True # Treat as an end state
+                        cleaned_issue_details_from_fetcher = tool_output_content_text 
+                        fetcher_reported_empty = True 
 
-    user_query_text = get_text_from_content(context.user_content) if context.user_content else ""
+    user_query_text = ""
+    if invocation_ctx and hasattr(invocation_ctx, 'user_content') and invocation_ctx.user_content:
+        user_query_text = get_text_from_content(invocation_ctx.user_content)
 
     # Condition to call adk_guidance_agent
     if cleaned_issue_details_from_fetcher and not fetcher_asked_for_issue_number and not fetcher_reported_empty:
