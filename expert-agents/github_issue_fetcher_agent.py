@@ -7,11 +7,13 @@ from typing import Optional, Any
 
 from google.adk.agents import Agent as ADKAgent
 from google.adk.agents.readonly_context import ReadonlyContext
-from google.adk.agents.callback_context import CallbackContext 
+# CallbackContext no longer needed here if after_tool_callback is removed
+# from google.adk.agents.callback_context import CallbackContext 
 from google.adk.models import Gemini
-from google.adk.tools.agent_tool import AgentTool
-from google.adk.tools.base_tool import BaseTool
-from google.adk.tools.tool_context import ToolContext
+from google.adk.tools.agent_tool import AgentTool # Still needed for direct call
+from google.adk.tools.base_tool import BaseTool # Not used by this agent's LLM
+from google.adk.tools.tool_context import ToolContext # For direct call
+from google.adk.agents.invocation_context import InvocationContext # For direct call
 from google.genai import types as genai_types
 
 from .browser_agent import browser_agent, BrowserAgentInput, BrowserAgentOutput 
@@ -47,7 +49,6 @@ def clean_github_issue_text(text: str) -> str:
 class GitHubIssueFetcherToolInput(BaseModel):
     issue_number: str = Field(description="The GitHub issue number for 'google/adk-python'.")
 
-# NEW: Output schema for GitHubIssueFetcherAgent
 class GitHubIssueFetcherOutput(BaseModel):
     cleaned_issue_details: Optional[str] = None
     error: Optional[str] = None
@@ -58,102 +59,92 @@ def get_text_from_content(content: genai_types.Content) -> str:
         return content.parts[0].text
     return ""
 
-def github_issue_fetcher_instruction_provider(context: ReadonlyContext) -> str:
+# This function now needs to be async
+async def github_issue_fetcher_instruction_provider(context: ReadonlyContext) -> str:
     invocation_ctx = context._invocation_context
+    user_input_json_str = get_text_from_content(invocation_ctx.user_content) if invocation_ctx and invocation_ctx.user_content else ""
     
-    # Check if data is ready in state to be outputted to root_agent via this agent's output_schema
-    processed_data_for_output_schema = None
-    if invocation_ctx and invocation_ctx.session:
-        processed_data_for_output_schema = invocation_ctx.session.state.get("temp:fetcher_processed_data_for_output")
+    issue_number_str = None
+    final_output_data_for_llm = {}
 
-    if processed_data_for_output_schema:
-        logger.info(f"FetcherAgent (instruction_provider): Found processed data in state. Instructing LLM to format as per output_schema: {str(processed_data_for_output_schema)[:100]}...")
-        
-        output_model_instance = GitHubIssueFetcherOutput(
-            cleaned_issue_details=processed_data_for_output_schema.get("cleaned_issue_details"),
-            error=processed_data_for_output_schema.get("error"),
-            message=processed_data_for_output_schema.get("message")
-        )
-        json_to_output_llm = output_model_instance.model_dump_json(exclude_none=True)
-        
-        if invocation_ctx and invocation_ctx.session: # Consume state
-            invocation_ctx.session.state.pop("temp:fetcher_processed_data_for_output", None)
-            
-        return f"Your final response for this turn MUST be exactly: '{json_to_output_llm}'"
+    if not user_input_json_str:
+        logger.error("FetcherAgent (instruction_provider): No input JSON provided.")
+        final_output_data_for_llm = {"error": "Fetcher agent received no input."}
     else:
-        # Initial call from root_agent: instruct LLM to call browser_agent
-        user_input_json_str = get_text_from_content(invocation_ctx.user_content) if invocation_ctx and invocation_ctx.user_content else ""
-        issue_number_str = None
-        if user_input_json_str:
-            try:
-                input_data = GitHubIssueFetcherToolInput.model_validate_json(user_input_json_str)
-                issue_number_str = input_data.issue_number
-            except Exception as e:
-                logger.error(f"FetcherAgent (instruction_provider - initial): Error parsing input '{user_input_json_str}': {e}")
-                error_output = GitHubIssueFetcherOutput(error="Fetcher agent received invalid input for issue_number.")
-                return f"Your final response for this turn MUST be exactly: '{error_output.model_dump_json(exclude_none=True)}'"
+        try:
+            input_data = GitHubIssueFetcherToolInput.model_validate_json(user_input_json_str)
+            issue_number_str = input_data.issue_number
+        except Exception as e:
+            logger.error(f"FetcherAgent (instruction_provider): Error parsing input '{user_input_json_str}': {e}")
+            final_output_data_for_llm = {"error": "Fetcher agent received invalid input for issue_number."}
 
-        if not issue_number_str:
-            logger.error("FetcherAgent (instruction_provider - initial): No issue_number provided.")
-            error_output = GitHubIssueFetcherOutput(error="Fetcher agent not provided with issue_number.")
-            return f"Your final response for this turn MUST be exactly: '{error_output.model_dump_json(exclude_none=True)}'"
-
+    if issue_number_str: # Proceed with fetching if issue number is valid
         github_url = f"https://github.com/google/adk-python/issues/{issue_number_str}"
-        browser_agent_input_for_tool = BrowserAgentInput(url=github_url)
-        browser_agent_args_json_str = browser_agent_input_for_tool.model_dump_json()
+        logger.info(f"FetcherAgent (instruction_provider): Directly calling browser_agent for URL: {github_url}")
+
+        browser_agent_as_tool = AgentTool(agent=browser_agent)
+        # browser_agent (sub-agent) expects BrowserAgentInput
+        browser_agent_args = BrowserAgentInput(url=github_url).model_dump()
         
-        logger.info(f"FetcherAgent (instruction_provider - initial): Instructing LLM to call '{browser_agent.name}' with args: {browser_agent_args_json_str}")
-        return f"Your ONLY task is to call the '{browser_agent.name}' tool with the following JSON arguments: '{browser_agent_args_json_str}'. Do not add any other text or commentary. A callback will process the tool's output."
+        # Create a dummy ToolContext for the direct call
+        # The InvocationContext for this agent is `invocation_ctx`
+        dummy_tool_context_for_browser_call = ToolContext(invocation_ctx)
+
+        browser_tool_response_dict = None
+        try:
+            # Directly await the AgentTool's run_async.
+            # AgentTool will handle calling browser_agent, which in turn directly calls ExtractGitHubIssueDetailsTool
+            # and then browser_agent's LLM formats the BrowserAgentOutput JSON.
+            # AgentTool then parses that JSON into a dict because browser_agent has an output_schema.
+            browser_tool_response_dict = await browser_agent_as_tool.run_async(
+                args=browser_agent_args, 
+                tool_context=dummy_tool_context_for_browser_call
+            )
+            logger.info(f"FetcherAgent: Received from direct browser_agent call: {str(browser_tool_response_dict)[:150]}")
+            
+            # Process the dictionary received from browser_agent
+            if isinstance(browser_tool_response_dict, dict):
+                browser_data = BrowserAgentOutput.model_validate(browser_tool_response_dict)
+                if browser_data.extracted_details:
+                    cleaned_details = clean_github_issue_text(browser_data.extracted_details)
+                    if not cleaned_details:
+                        final_output_data_for_llm = {"message": "GitHub issue content empty/template after cleaning."}
+                    else:
+                        final_output_data_for_llm = {"cleaned_issue_details": cleaned_details}
+                elif browser_data.error:
+                    final_output_data_for_llm = {"error": f"Browser sub-agent reported: {browser_data.error}"}
+                elif browser_data.message:
+                    final_output_data_for_llm = {"message": f"Browser sub-agent message: {browser_data.message}"}
+                else:
+                    final_output_data_for_llm = {"message": "Browser sub-agent returned no specific details, error, or message."}
+            else:
+                logger.error(f"FetcherAgent: Expected dict from browser_agent call, got {type(browser_tool_response_dict)}")
+                final_output_data_for_llm = {"error": "Internal error: Unexpected data type from browser utility."}
+
+        except Exception as e:
+            logger.error(f"FetcherAgent (instruction_provider): Error during direct call to browser_agent: {e}", exc_info=True)
+            final_output_data_for_llm = {"error": f"Failed to process GitHub issue via browser: {e}"}
+    
+    elif not final_output_data_for_llm.get("error"): # If no issue_number and no prior error
+        logger.error("FetcherAgent (instruction_provider): No issue_number provided and no prior error recorded.")
+        final_output_data_for_llm = {"error": "Fetcher agent not provided with issue_number."}
+
+    # Instruct this agent's LLM to output the final JSON based on GitHubIssueFetcherOutput
+    output_model_instance = GitHubIssueFetcherOutput(**final_output_data_for_llm)
+    json_to_output_llm = output_model_instance.model_dump_json(exclude_none=True)
+    
+    return f"Your final response for this turn MUST be exactly: '{json_to_output_llm}'"
 
 
+# after_tool_callback is no longer needed for AgentTool(browser_agent)
+# as it's now called directly within the instruction_provider.
 def github_issue_fetcher_after_tool_callback(
     tool: BaseTool,
     args: dict,
     tool_context: ToolContext, 
-    tool_response: Any  # Expected: dict (parsed BrowserAgentOutput)
+    tool_response: Any 
 ) -> dict | None: 
-    if tool.name == browser_agent.name:
-        logger.info(f"FetcherAgent (after_tool_callback for {tool.name}): Received tool_response from browser_agent. Type: {type(tool_response)}, Value: '{str(tool_response)[:150]}'.")
-
-        processed_data_for_output = {}
-
-        if isinstance(tool_response, dict):
-            try:
-                # browser_agent has output_schema, so tool_response should be a dict matching BrowserAgentOutput
-                browser_data = BrowserAgentOutput.model_validate(tool_response) 
-                
-                if browser_data.extracted_details:
-                    cleaned_details = clean_github_issue_text(browser_data.extracted_details)
-                    if not cleaned_details:
-                        processed_data_for_output = {"message": "GitHub issue content empty/template after cleaning."}
-                    else:
-                        processed_data_for_output = {"cleaned_issue_details": cleaned_details}
-                elif browser_data.error:
-                    processed_data_for_output = {"error": f"Browser agent reported: {browser_data.error}"}
-                elif browser_data.message:
-                    processed_data_for_output = {"message": f"Browser agent message: {browser_data.message}"}
-                else: 
-                    processed_data_for_output = {"message": "Browser agent returned no details, error, or message."}
-            except Exception as e: 
-                logger.warning(f"FetcherAgent: tool_response dict from browser_agent couldn't be validated/processed: {str(tool_response)[:150]}. Error: {e}")
-                processed_data_for_output = {"error": "Browser agent returned data in an unexpected dictionary format."}
-        
-        elif isinstance(tool_response, str): # Should not happen if browser_agent output_schema works
-            logger.warning(f"FetcherAgent: tool_response from browser_agent was a string (expected dict): {str(tool_response)[:150]}.")
-            processed_data_for_output = {"error": f"Browser agent returned unparsable text: {tool_response[:100]}..."}
-        
-        else: 
-            logger.error(f"FetcherAgent: tool_response from browser_agent was neither dict nor string. Type: {type(tool_response)}, Value: {str(tool_response)[:150]}")
-            processed_data_for_output = {"error": "Received unexpected data type from browser sub-process."}
-        
-        # Store the processed data that this agent's LLM needs to format for its own output_schema
-        tool_context.state["temp:fetcher_processed_data_for_output"] = processed_data_for_output
-        logger.info(f"FetcherAgent (after_tool_callback): Stored processed data for own output in state 'temp:fetcher_processed_data_for_output': {str(processed_data_for_output)[:100]}...")
-        
-        tool_context.actions.skip_summarization = True 
-        return {"status": "fetcher_processed_browser_data_ready_for_own_output_schema"} 
-    
-    logger.warning(f"FetcherAgent (after_tool_callback): Callback for unexpected tool: {tool.name}")
+    logger.warning(f"FetcherAgent (after_tool_callback): Unexpected tool call intercepted: {tool.name}. This agent should not be calling ADK tools via LLM.")
     return None
 
 
@@ -162,18 +153,16 @@ github_issue_fetcher_agent = ADKAgent(
     description="Receives a GitHub issue number for 'google/adk-python', fetches its content using a browser utility, cleans it, and returns a JSON object conforming to GitHubIssueFetcherOutput.",
     model=Gemini(model=DEFAULT_MODEL_NAME),
     input_schema=GitHubIssueFetcherToolInput,
-    output_schema=GitHubIssueFetcherOutput, # NEW output schema for this agent
+    output_schema=GitHubIssueFetcherOutput, 
     instruction=github_issue_fetcher_instruction_provider,
-    tools=[
-        AgentTool(agent=browser_agent) 
-    ],
+    tools=[], # IMPORTANT: tools list is now empty
     before_model_callback=log_prompt_before_model_call,
-    after_tool_callback=github_issue_fetcher_after_tool_callback, 
+    after_tool_callback=None, # No ADK tools for its LLM to call
     disallow_transfer_to_parent=True,
     disallow_transfer_to_peers=True,
     generate_content_config=genai_types.GenerateContentConfig(
         temperature=0,
-        max_output_tokens=20000, # For outputting its own JSON (GitHubIssueFetcherOutput)
+        max_output_tokens=20000, 
         top_p=0.6
     )
 )
