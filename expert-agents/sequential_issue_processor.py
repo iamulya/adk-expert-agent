@@ -153,7 +153,7 @@ adk_guidance_wrapper_agent = LlmAgent(
     generate_content_config=genai_types.GenerateContentConfig(temperature=0)
 )
 
-# 3. FormatOutputAgent
+# 3. FormatOutputAgent - this is necessary, otherwise the output from the guidance agent is not going through to the root agent!!
 class FormatOutputAgent(BaseAgent):
     name: str = "FormatFinalOutputAgent"
     description: str = "Formats the processed data into the final JSON string output."
