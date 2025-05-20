@@ -25,7 +25,7 @@ get_gemini_api_key_from_secret_manager()
 BOILERPLATE_STRINGS_TO_REMOVE = [
     "Is your feature request related to a problem? Please describe.",
     "Describe the solution you'd like",
-    "Describe alternatives you've considered",
+    "Describe alternatives you'veconsidered",
     "Describe the bug",
     "Minimal Reproduction",
     "Minimal steps to reproduce",
@@ -51,44 +51,79 @@ def github_issue_fetcher_after_tool_callback(
     tool: BaseTool,
     args: dict,
     tool_context: ToolContext, 
-    tool_response: Any  # This will be the sentinel string "BROWSER_DATA_READY"
+    tool_response: Any  # Expected: '{"status": "BROWSER_DATA_READY"}' or '{"error": "..."}' or potentially empty string
 ) -> genai_types.Content | None:
     if tool.name == browser_agent.name:
-        logger.info(f"FetcherAgent (after_tool_callback for {tool.name}): Received tool_response: '{str(tool_response)[:100]}'. Expecting sentinel 'BROWSER_DATA_READY'.")
+        logger.info(f"FetcherAgent (after_tool_callback for {tool.name}): Received tool_response: '{str(tool_response)[:150]}'.")
 
-        # Retrieve the actual data from session state, put there by browser_agent's after_tool_callback
-        # tool_context._invocation_context.session.state is the shared session state
+        browser_agent_llm_output_parsed = None
+        browser_agent_signaled_ready = False
+        browser_agent_reported_error = None
+
+        # Try to parse tool_response (sentinel or error from browser_agent's LLM)
+        if isinstance(tool_response, str) and tool_response.strip():
+            try:
+                browser_agent_llm_output_parsed = json.loads(tool_response)
+                if isinstance(browser_agent_llm_output_parsed, dict):
+                    if browser_agent_llm_output_parsed.get("status") == "BROWSER_DATA_READY":
+                        browser_agent_signaled_ready = True
+                        logger.info("FetcherAgent: Received BROWSER_DATA_READY sentinel.")
+                    elif "error" in browser_agent_llm_output_parsed:
+                        browser_agent_reported_error = browser_agent_llm_output_parsed["error"]
+                        logger.warning(f"FetcherAgent: Browser agent's LLM reported an error: {browser_agent_reported_error}")
+                    else:
+                        logger.warning(f"FetcherAgent: Received unexpected JSON from browser_agent's LLM: {str(browser_agent_llm_output_parsed)[:100]}")
+                else:
+                    logger.warning(f"FetcherAgent: Parsed browser_agent's LLM response is not a dict: {str(browser_agent_llm_output_parsed)[:100]}")
+            except json.JSONDecodeError:
+                logger.warning(f"FetcherAgent: tool_response from browser_agent's LLM was not valid JSON: {str(tool_response)[:100]}")
+        elif isinstance(tool_response, dict) and "text" in tool_response and isinstance(tool_response["text"], str) and tool_response["text"].strip(): # ADK AgentTool might wrap it
+            try:
+                browser_agent_llm_output_parsed = json.loads(tool_response["text"])
+                if isinstance(browser_agent_llm_output_parsed, dict):
+                    if browser_agent_llm_output_parsed.get("status") == "BROWSER_DATA_READY":
+                        browser_agent_signaled_ready = True
+                    elif "error" in browser_agent_llm_output_parsed:
+                        browser_agent_reported_error = browser_agent_llm_output_parsed["error"]
+            except json.JSONDecodeError:
+                 logger.warning(f"FetcherAgent: tool_response text from browser_agent's LLM (wrapped) was not valid JSON: {str(tool_response['text'])[:100]}")
+        else:
+             logger.warning(f"FetcherAgent: Received empty or unhandled tool_response from browser_agent's LLM: type {type(tool_response)}, value '{str(tool_response)[:100]}'")
+
+
+        # Always try to get data from session state
         actual_data_dict = tool_context._invocation_context.session.state.get("temp:browser_tool_output_data")
         
-        # Clean up the state
-        if actual_data_dict is not None: # only pop if it existed
+        if actual_data_dict is not None:
             tool_context._invocation_context.session.state.pop("temp:browser_tool_output_data", None)
-            logger.info("FetcherAgent (after_tool_callback): Cleared 'temp:browser_tool_output_data' from session state.")
-
-        if not isinstance(actual_data_dict, dict):
-            logger.warning(f"FetcherAgent (after_tool_callback): Could not retrieve valid data dictionary from session state 'temp:browser_tool_output_data'. Found: {type(actual_data_dict)}")
-            final_payload = {"error": f"Browser utility ({browser_agent.name}) did not store readable data in session state."}
-            tool_context.actions.skip_summarization = True
-            return genai_types.Content(parts=[genai_types.Part(text=json.dumps(final_payload))])
-
-        logger.info(f"FetcherAgent (after_tool_callback): Retrieved data from session state: {str(actual_data_dict)[:200]}...")
+            logger.info("FetcherAgent (after_tool_callback): Consumed 'temp:browser_tool_output_data' from session state.")
+        else:
+            logger.warning("FetcherAgent (after_tool_callback): 'temp:browser_tool_output_data' not found in session state.")
 
         final_payload_dict = {}
-        # actual_data_dict is what used to be parsed_browser_output
-        if "extracted_details" in actual_data_dict:
-            raw_extracted_details = actual_data_dict["extracted_details"]
-            logger.info("FetcherAgent (after_tool_callback): Successfully processed 'extracted_details' from session state.")
-            cleaned_details = clean_github_issue_text(raw_extracted_details)
-            if not cleaned_details:
-                final_payload_dict = {"message": "The fetched GitHub issue content appears to be empty or contained only template text. No specific details to analyze."}
-            else:
-                final_payload_dict = {"cleaned_issue_details": cleaned_details}
-        elif "error" in actual_data_dict: 
-            final_payload_dict = {"error": f"Browser tool (via session state) reported: {actual_data_dict['error']}"}
-        else:
-            logger.warning(f"FetcherAgent (after_tool_callback): Data from session state has unexpected structure: {str(actual_data_dict)[:200]}")
-            final_payload_dict = {"error": "Browser tool returned unexpected data structure via session state."}
-        
+        if isinstance(actual_data_dict, dict):
+            logger.info(f"FetcherAgent (after_tool_callback): Processing data from session state: {str(actual_data_dict)[:200]}...")
+            if "extracted_details" in actual_data_dict:
+                raw_extracted_details = actual_data_dict["extracted_details"]
+                logger.info("FetcherAgent: Successfully processed 'extracted_details' from session state.")
+                cleaned_details = clean_github_issue_text(raw_extracted_details)
+                if not cleaned_details:
+                    final_payload_dict = {"message": "The fetched GitHub issue content appears to be empty or contained only template text. No specific details to analyze."}
+                else:
+                    final_payload_dict = {"cleaned_issue_details": cleaned_details}
+            elif "error" in actual_data_dict: 
+                final_payload_dict = {"error": f"Browser tool (via session state) reported: {actual_data_dict['error']}"}
+            else: # Data in state, but wrong structure
+                final_payload_dict = {"error": "Browser tool returned unexpected data structure via session state."}
+        else: # No data in state, or invalid data type
+            if browser_agent_reported_error:
+                 final_payload_dict = {"error": f"Browser agent init error: {browser_agent_reported_error}. No data from browser tool."}
+            elif not browser_agent_signaled_ready:
+                 final_payload_dict = {"error": "Browser utility failed to signal readiness and no data was found in session."}
+            else: # Signaled ready, but no data. Should be rare.
+                 final_payload_dict = {"error": "Browser utility signaled ready, but no data was found in session."}
+            logger.error(f"FetcherAgent: Final error payload: {final_payload_dict}")
+            
         final_json_output_for_root_agent = json.dumps(final_payload_dict)
         logger.info(f"FetcherAgent (after_tool_callback): Returning direct JSON content to root_agent: {final_json_output_for_root_agent[:200]}...")
         tool_context.actions.skip_summarization = True 
@@ -105,6 +140,7 @@ def github_issue_fetcher_instruction_provider(context: ReadonlyContext) -> str:
         first_part_text = invocation_ctx.user_content.parts[0].text
         if first_part_text:
             try:
+                # Input from root_agent is '{"issue_number":"..."}'
                 input_data = GitHubIssueFetcherToolInput.model_validate_json(first_part_text)
                 issue_number_str = input_data.issue_number
             except Exception as e:
@@ -114,7 +150,13 @@ def github_issue_fetcher_instruction_provider(context: ReadonlyContext) -> str:
     if issue_number_str:
         github_url = f"https://github.com/google/adk-python/issues/{issue_number_str}"
         logger.info(f"FetcherAgent (instruction_provider): Instructing LLM to call browser_agent for URL: {github_url}")
-        return f"Your ONLY task is to call the '{browser_agent.name}' tool with the URL '{github_url}'. Do not add any other text or commentary. A callback will process the tool's output."
+        
+        # browser_agent now has an input_schema: BrowserAgentInput(url: str)
+        # So, AgentTool will expect arguments for browser_agent to be a JSON string of that schema.
+        browser_agent_args = {"url": github_url}
+        browser_agent_args_json_str = json.dumps(browser_agent_args)
+        
+        return f"Your ONLY task is to call the '{browser_agent.name}' tool with the following JSON arguments: '{browser_agent_args_json_str}'. Do not add any other text or commentary. A callback will process the tool's output."
     else:
         logger.error("FetcherAgent (instruction_provider): No issue_number. Orchestrator should provide it.")
         return "Your final response must be the JSON: {\"error\": \"Fetcher agent was called by orchestrator without an issue number.\"}"

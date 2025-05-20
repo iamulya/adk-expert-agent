@@ -1,7 +1,7 @@
 # expert-agents/browser_agent.py
 import logging
 import json
-from pydantic import BaseModel # Add this
+from pydantic import BaseModel
 
 from google.adk.agents import Agent as ADKAgent
 from google.adk.models import Gemini
@@ -41,28 +41,28 @@ def browser_agent_instruction_provider(context: ReadonlyContext) -> str:
         browser_tool_output_data = invocation_ctx.session.state.get("temp:browser_tool_output_data")
 
     if browser_tool_output_data:
-        if hasattr(invocation_ctx, 'session'): 
-            invocation_ctx.session.state.pop("temp:browser_tool_output_data", None)
+        # Data is in state, means the tool ran. Pop it if this agent is going to output sentinel.
+        # The actual consumer (github_issue_fetcher_agent) will also attempt to pop it.
+        # It's fine if it's popped here or by the consumer.
+        # if hasattr(invocation_ctx, 'session'): 
+        #     invocation_ctx.session.state.pop("temp:browser_tool_output_data", None)
         
-        logger.info(f"BrowserAgent (instruction_provider): Tool output data found in state. Instructing LLM to output sentinel string 'BROWSER_DATA_READY'.")
-        return "Your final response for this turn MUST be exactly: 'BROWSER_DATA_READY'"
+        logger.info(f"BrowserAgent (instruction_provider): Tool output data found in state. Instructing LLM to output JSON sentinel.")
+        # This instruction makes the LLM output the JSON sentinel string as its final text response
+        return "Your final response for this turn MUST be exactly: '{\"status\": \"BROWSER_DATA_READY\"}'"
     else:
+        # Initial call: instruct LLM to call the tool
         url_to_fetch = ""
         if user_input_json_str:
             try:
-                # user_input_json_str is now expected to be '{"url": "..."}' due to input_schema
-                args_dict = json.loads(user_input_json_str)
-                url_to_fetch = args_dict.get("url")
-                if not url_to_fetch: # Ensure 'url' key exists and has a value
-                    raise ValueError("'url' key missing or empty in parsed JSON.")
-            except (json.JSONDecodeError, ValueError) as e:
+                args_dict = BrowserAgentInput.model_validate_json(user_input_json_str)
+                url_to_fetch = args_dict.url
+            except (json.JSONDecodeError, Exception) as e: # Broader exception for Pydantic validation
                 logger.error(f"BrowserAgent (instruction_provider): Could not parse/validate input JSON to get URL: {user_input_json_str}. Error: {e}")
-                return "Your final response must be the JSON: {\"error\": \"Browser agent received invalid or malformed URL input.\"}"
+                return "Your final response must be the JSON: {\"error\": \"Browser agent received invalid or malformed URL input via JSON.\"}"
         
         if not url_to_fetch:
             logger.error("BrowserAgent (instruction_provider): URL not provided or extracted from input.")
-            # This case should ideally be caught by the try-except above if user_input_json_str was present but malformed.
-            # If user_input_json_str was empty, it implies an issue with how AgentTool passed args.
             return "Your final response must be the JSON: {\"error\": \"URL not provided to browser_agent input.\"}"
 
         logger.info(f"BrowserAgent (instruction_provider): Instructing LLM to call tool '{ExtractGitHubIssueDetailsTool().name}' for URL: {url_to_fetch}")
@@ -93,12 +93,12 @@ def browser_agent_after_tool_callback(
 browser_agent = ADKAgent(
     name="browser_utility_agent",
     model=Gemini(model=DEFAULT_MODEL_NAME),
-    input_schema=BrowserAgentInput,  # Crucial addition
+    input_schema=BrowserAgentInput,
     instruction=browser_agent_instruction_provider, 
     tools=[ExtractGitHubIssueDetailsTool()],
     before_model_callback=log_prompt_before_model_call,
     after_tool_callback=browser_agent_after_tool_callback, 
     disallow_transfer_to_parent=True,
     disallow_transfer_to_peers=True,
-    generate_content_config=genai_types.GenerateContentConfig(temperature=0, max_output_tokens=20000) # Reduced tokens as it only outputs a sentinel.
+    generate_content_config=genai_types.GenerateContentConfig(temperature=0, max_output_tokens=20000)
 )
