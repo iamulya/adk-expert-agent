@@ -6,6 +6,7 @@ from google.adk.agents import Agent as ADKAgent
 from google.adk.models import Gemini
 from google.adk.tools.base_tool import BaseTool
 from google.adk.tools.tool_context import ToolContext
+from google.adk.agents.readonly_context import ReadonlyContext # Added for instruction provider
 from google.genai import types as genai_types
 
 from .tools import ExtractGitHubIssueDetailsTool, get_gemini_api_key_from_secret_manager
@@ -15,41 +16,90 @@ from .callbacks import log_prompt_before_model_call
 logger = logging.getLogger(__name__)
 get_gemini_api_key_from_secret_manager()
 
+# Helper function (if not already available or imported from elsewhere)
+def get_text_from_content(content: genai_types.Content) -> str:
+    if content and content.parts and content.parts[0].text:
+        return content.parts[0].text
+    return ""
+
+def browser_agent_instruction_provider(context: ReadonlyContext) -> str:
+    invocation_ctx = None
+    if hasattr(context, '_invocation_context'):
+        invocation_ctx = context._invocation_context
+    
+    user_input_json_str = ""
+    if invocation_ctx and hasattr(invocation_ctx, 'user_content') and invocation_ctx.user_content:
+        user_input_json_str = get_text_from_content(invocation_ctx.user_content)
+
+    browser_tool_output = None
+    if invocation_ctx and hasattr(invocation_ctx, 'session') and invocation_ctx.session:
+        # Check if temp:browser_tool_output exists in the current session state
+        browser_tool_output = invocation_ctx.session.state.get("temp:browser_tool_output")
+
+    if browser_tool_output:
+        if hasattr(invocation_ctx, 'session'): # Ensure session exists before pop
+            # Consume the stored result from state
+            invocation_ctx.session.state.pop("temp:browser_tool_output", None)
+        
+        # browser_tool_output is the dict like {"extracted_details": "..."} or {"error": "..."}
+        final_json_to_output = json.dumps(browser_tool_output)
+        logger.info(f"BrowserAgent (instruction_provider): Instructing LLM to output JSON: {final_json_to_output[:100]}...")
+        # This instruction makes the LLM output the JSON string as its final text response
+        return f"Your final response for this turn MUST be exactly: '{final_json_to_output}'"
+    else:
+        # Initial call: instruct LLM to call the tool
+        url_to_fetch = ""
+        if user_input_json_str:
+            try:
+                # AgentTool passes arguments to the sub-agent as a JSON string of a dict.
+                # For ExtractGitHubIssueDetailsTool, the argument key is "url".
+                args_dict = json.loads(user_input_json_str)
+                url_to_fetch = args_dict.get("url")
+            except json.JSONDecodeError:
+                logger.error(f"BrowserAgent (instruction_provider): Could not parse input JSON to get URL: {user_input_json_str}")
+                return "Error: URL for browser agent was malformed or not found in input."
+        
+        if not url_to_fetch:
+            logger.error("BrowserAgent (instruction_provider): URL not provided in input.")
+            return "Error: URL not provided to browser_agent."
+
+        logger.info(f"BrowserAgent (instruction_provider): Instructing LLM to call tool '{ExtractGitHubIssueDetailsTool().name}' for URL: {url_to_fetch}")
+        # This instruction makes the LLM call the tool
+        return f"Your ONLY task is to call the tool '{ExtractGitHubIssueDetailsTool().name}' with the argument 'url' set to '{url_to_fetch}'. Do not add any other text or commentary."
+
 def browser_agent_after_tool_callback(
     tool: BaseTool,
     args: dict,
     tool_context: ToolContext,
-    tool_response: dict 
-) -> genai_types.Content | None:
-    if tool.name == ExtractGitHubIssueDetailsTool().name: 
-        logger.info(f"BrowserAgent (after_tool_callback): Intercepted response from '{tool.name}'.")
-        if isinstance(tool_response, dict) and "extracted_details" in tool_response:
-            output_dict = {"extracted_details": tool_response["extracted_details"]}
-            try:
-                output_json_string = json.dumps(output_dict)
-                logger.info(f"BrowserAgent (after_tool_callback): Returning direct JSON string: {output_json_string[:200]}...")
-                tool_context.actions.skip_summarization = True # Make this Content final for browser_agent
-                return genai_types.Content(parts=[genai_types.Part(text=output_json_string)])
-            except TypeError as e:
-                logger.error(f"BrowserAgent (after_tool_callback): Could not serialize to JSON: {e}. Returning raw.")
-                error_json = json.dumps({"error": f"Failed to serialize browser output: {tool_response['extracted_details'][:100]}..."})
-                tool_context.actions.skip_summarization = True
-                return genai_types.Content(parts=[genai_types.Part(text=error_json)])
-        else:
-            logger.warning(f"BrowserAgent (after_tool_callback): '{tool.name}' did not return 'extracted_details'. Response: {tool_response}")
-            error_json = json.dumps({"error": f"Tool '{tool.name}' did not provide 'extracted_details'."})
+    tool_response: dict  # This is the raw dict output from ExtractGitHubIssueDetailsTool.run_async
+) -> dict | None:     # MUST return dict or None as per ADK LlmAgent.after_tool_callback signature
+    if tool.name == ExtractGitHubIssueDetailsTool().name:
+        logger.info(f"BrowserAgent (after_tool_callback): Intercepted response from '{tool.name}'. Raw response: {str(tool_response)[:200]}")
+        
+        # tool_response is already the dict {"extracted_details": "..."} or {"error": "..."}
+        if isinstance(tool_response, dict) and ("extracted_details" in tool_response or "error" in tool_response):
+            # Store the tool's result in the session state so the instruction_provider can access it next turn.
+            tool_context.state["temp:browser_tool_output"] = tool_response
+            # skip_summarization ensures the LLM doesn't try to summarize this tool_response dict.
+            # The agent will re-prompt based on the new state via the instruction_provider.
             tool_context.actions.skip_summarization = True
-            return genai_types.Content(parts=[genai_types.Part(text=error_json)])
+            return tool_response # Return the dict; ADK will form a FunctionResponse part from this.
+        else:
+            logger.warning(f"BrowserAgent (after_tool_callback): Tool '{tool.name}' did not return 'extracted_details' or 'error'. Response: {tool_response}")
+            error_payload = {"error": f"Tool '{tool.name}' did not provide 'extracted_details' or 'error' in its response dict."}
+            tool_context.state["temp:browser_tool_output"] = error_payload
+            tool_context.actions.skip_summarization = True
+            return error_payload
     return None
 
 browser_agent = ADKAgent(
     name="browser_utility_agent",
     model=Gemini(model=DEFAULT_MODEL_NAME),
-    instruction="You are a utility agent. Your ONLY task is to execute the provided browser tool with the given URL. The tool's direct JSON output will be handled by a callback.",
+    instruction=browser_agent_instruction_provider, # Use the new instruction provider
     tools=[ExtractGitHubIssueDetailsTool()],
     before_model_callback=log_prompt_before_model_call,
-    after_tool_callback=browser_agent_after_tool_callback, 
+    after_tool_callback=browser_agent_after_tool_callback, # Use the corrected after_tool_callback
     disallow_transfer_to_parent=True,
     disallow_transfer_to_peers=True,
-    generate_content_config=genai_types.GenerateContentConfig(temperature=0, max_output_tokens=20000) # LLM only makes tool call
+    generate_content_config=genai_types.GenerateContentConfig(temperature=0, max_output_tokens=20000)
 )
