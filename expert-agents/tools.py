@@ -57,6 +57,27 @@ def get_gemini_api_key_from_secret_manager() -> str:
         print(f"Error fetching secret from Secret Manager: {e}")
         raise
 
+def get_github_pat_from_secret_manager() -> str:
+    global _GEMINI_API_KEY
+    if _GEMINI_API_KEY:
+        return _GEMINI_API_KEY
+    project_id = os.getenv("GCP_PROJECT_ID")
+    secret_id = os.getenv("GITHUB_API_PAT_SECRET_ID")
+    version_id = os.getenv("GITHUB_API_PAT_SECRET_VERSION", "1") 
+    if not project_id or not secret_id:
+        raise ValueError("GCP_PROJECT_ID and GITHUB_API_PAT_SECRET_ID must be set in .env")
+    client = secretmanager.SecretManagerServiceClient()
+    name = f"projects/{project_id}/secrets/{secret_id}/versions/{version_id}"
+    print(f"Fetching secret: {name}")
+    try:
+        response = client.access_secret_version(name=name)
+        GITHUB_PERSONAL_ACCESS_TOKEN = response.payload.data.decode("UTF-8")
+        print("Successfully fetched API key from Secret Manager.")
+        return GITHUB_PERSONAL_ACCESS_TOKEN
+    except Exception as e:
+        print(f"Error fetching secret from Secret Manager: {e}")
+        raise
+
 class ConstructGitHubUrlToolInput(BaseModel):
     issue_number: str = Field(description="The GitHub issue number for 'google/adk-python'.")
 
@@ -330,3 +351,112 @@ class ExtractGitHubIssueDetailsTool(BaseTool):
                 error_message = f"browser-use agent did not run successfully for {url}. An earlier error might have occurred."
             logger.error(f"Tool: {self.name} - Error extracting content from {url}. {error_message}")
             return ExtractionResultInput(error=error_message).model_dump(exclude_none=True)
+        
+import requests # You might need to pip install requests
+from typing import Dict, Any
+from google.adk.tools.base_tool import override # Correct import for override
+from google.genai import types
+
+class GetGithubIssueDescriptionTool(BaseTool):
+  """
+  A tool to fetch the description of a specific GitHub issue.
+  """
+
+  def __init__(self):
+    super().__init__(
+        name="get_github_issue_description",
+        description="Fetches the description (body) of a GitHub issue given the repository owner, repository name, and issue number.",
+    )
+
+  @override
+  def _get_declaration(self) -> types.FunctionDeclaration:
+    return types.FunctionDeclaration(
+        name=self.name,
+        description=self.description,
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "owner": types.Schema(
+                    type=types.Type.STRING,
+                    default="google",
+                    description="The owner of the GitHub repository (e.g., 'google').",
+                ),
+                "repo": types.Schema(
+                    type=types.Type.STRING,
+                    default="adk-python",
+                    description="The name of the GitHub repository (e.g., 'adk-python').",
+                ),
+                "issue_number": types.Schema(
+                    type=types.Type.INTEGER,
+                    description="The number of the GitHub issue.",
+                ),
+            },
+            required=["owner", "repo", "issue_number"],
+        ),
+    )
+
+  async def run_async(
+      self, *, args: Dict[str, Any], tool_context: ToolContext
+  ) -> Dict[str, Any]:
+    """
+    Fetches the issue description from GitHub.
+
+    Args:
+        args: A dictionary containing 'owner', 'repo', and 'issue_number'.
+        tool_context: The context for the tool invocation.
+
+    Returns:
+        A dictionary containing the 'description' of the issue or an 'error' message.
+    """
+    owner = args.get("owner")
+    repo = args.get("repo")
+    issue_number = args.get("issue_number")
+
+    if not owner:
+      return {"error": "Missing required argument: owner."}
+    if not repo:
+      return {"error": "Missing required argument: repo."}
+    if issue_number is None: # Check for None as 0 is a valid issue number (though rare)
+      return {"error": "Missing required argument: issue_number."}
+
+    api_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}"
+    GITHUB_PERSONAL_ACCESS_TOKEN = get_github_pat_from_secret_manager()
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "google-adk-tool", 
+        "Authorization": f"token $GITHUB_PERSONAL_ACCESS_TOKEN",
+    }
+
+    try:
+      # Using synchronous requests library within an async function.
+      # For a truly async operation, httpx would be preferred.
+      # However, ADK's RestApiTool also uses synchronous requests.
+      response = requests.get(api_url, headers=headers, timeout=10)
+      response.raise_for_status()  # Raises HTTPError for bad responses (4xx or 5xx)
+      
+      issue_data = response.json()
+      description = issue_data.get("body")
+
+      if description is None: # Handles empty description string as well
+        return {"description": ""} # Return empty string if body is null/None
+      return {"description": str(description)} # Ensure it's a string
+      
+    except requests.exceptions.HTTPError as e:
+      error_message = f"HTTP error occurred: {e.response.status_code}"
+      try:
+          error_details = e.response.json()
+          error_message += f" - {error_details.get('message', e.response.text)}"
+      except ValueError: # In case response is not JSON
+          error_message += f" - {e.response.text}"
+      return {"error": error_message}
+    except requests.exceptions.Timeout:
+        return {"error": f"Request timed out while fetching issue from {api_url}."}
+    except requests.exceptions.RequestException as e:
+        return {"error": f"A network request failed: {e}"}
+    except ValueError: # Catches JSONDecodeError if response.json() fails
+        return {"error": "Failed to decode JSON response from GitHub API."}
+    except Exception as e:
+        return {"error": f"An unexpected error occurred: {str(e)}"}
+
+# You can also create a global instance for easy import
+get_github_issue_description = GetGithubIssueDescriptionTool()
