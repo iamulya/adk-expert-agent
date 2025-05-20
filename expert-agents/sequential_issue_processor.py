@@ -1,19 +1,17 @@
 # expert-agents/sequential_issue_processor.py
 import logging
 import json
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
-from google.adk.agents import SequentialAgent, Agent as LlmAgent 
+from google.adk.agents import SequentialAgent, Agent as LlmAgent
 from google.adk.models import Gemini
-from google.adk.agents.readonly_context import ReadonlyContext 
-from google.adk.agents.invocation_context import InvocationContext 
+from google.adk.agents.readonly_context import ReadonlyContext
+from google.adk.tools import BaseTool 
+from google.adk.tools.tool_context import ToolContext 
 from google.genai import types as genai_types
 
 from .tools import (
-    ConstructGitHubUrlTool, ConstructGitHubUrlToolInput, ConstructGitHubUrlToolOutput,
-    ExtractGitHubIssueDetailsTool, ExtractGitHubIssueDetailsToolInput, ExtractionResultInput,
-    HandleExtractionResultTool, HandleExtractionResultToolOutput,
-    CleanGitHubIssueTextTool, CleanGitHubIssueTextToolInput, CleanGitHubIssueTextToolOutput,
+    GetGithubIssueDescriptionTool,
     ADKGuidanceTool, ADKGuidanceToolInput, ADKGuidanceToolOutput,
 )
 from .config import DEFAULT_MODEL_NAME
@@ -36,153 +34,104 @@ def get_user_content_text_from_readonly_context(context: ReadonlyContext) -> str
 
 # --- Wrapper Agents for each tool in the sequence ---
 
-# 1. Wrapper for ConstructGitHubUrlTool
-def construct_url_instruction_provider(context: ReadonlyContext) -> str:
+# 1. Wrapper for GetGithubIssueDescriptionTool
+def get_issue_description_instruction_provider(context: ReadonlyContext) -> str:
     user_content_str = get_user_content_text_from_readonly_context(context)
-    tool_name = ConstructGitHubUrlTool().name
+    tool_name = GetGithubIssueDescriptionTool().name
+    
+    # user_content_str is expected to be a JSON string like "{\"issue_number\":\"123\"}" (S_inner)
+    # However, due to LLM behavior or AgentTool wrapping, it might sometimes be
+    # "{\"request\": \"{\\\"issue_number\\\":\\\"123\\\"}\"}" (S_outer)
+    
+    payload_to_validate = user_content_str
+
     if user_content_str:
         try:
-            # user_content_str is expected to be json.dumps({"request": "{\"issue_number\":\"123\"}"})
-            outer_input_dict = json.loads(user_content_str)
-            # actual_input_json_str is "{\"issue_number\":\"123\"}"
-            actual_input_json_str = outer_input_dict.get("request")
-            if actual_input_json_str is None: # Handle case where "request" key might be missing
-                 logger.error(f"{tool_name} Wrapper: 'request' key missing in outer input dict: {outer_input_dict}")
-                 raise ValueError("'request' key missing in input")
+            # Attempt to parse user_content_str as if it's the S_outer structure
+            data = json.loads(user_content_str)
+            if isinstance(data, dict) and "request" in data and isinstance(data["request"], str):
+                # It was S_outer, extract S_inner
+                payload_to_validate = data["request"]
+                logger.info(f"{tool_name} Wrapper: Unwrapped 'request' from outer JSON. Using: {payload_to_validate}")
+        except json.JSONDecodeError:
+            # user_content_str is not a JSON string representing a dict (e.g., it's already S_inner).
+            logger.warning(f"{tool_name} Wrapper: user_content_str is not a JSON dict, assuming direct payload: {user_content_str[:100]}")
+            pass # payload_to_validate remains user_content_str, hopefully S_inner
 
-            # Now, actual_input_json_str should be a string that is valid JSON for GitHubIssueProcessingInput
-            input_data = GitHubIssueProcessingInput.model_validate_json(actual_input_json_str)
+        try:
+            # payload_to_validate should now be S_inner ("{\"issue_number\":\"773\"}")
+            input_data = GitHubIssueProcessingInput.model_validate_json(payload_to_validate)
             
-            tool_input_obj = ConstructGitHubUrlToolInput(issue_number=input_data.issue_number)
-            tool_arg_json = tool_input_obj.model_dump_json()
+            # GetGithubIssueDescriptionTool expects issue_number as an integer.
+            tool_arg_dict = {"issue_number": int(input_data.issue_number)}
+            # owner and repo use defaults specified in the tool's declaration
+            tool_arg_json = json.dumps(tool_arg_dict)
+            
             return f"Your task is to call the '{tool_name}' tool with the following JSON arguments: {tool_arg_json}. Output only the tool call."
-        except Exception as e:
-            logger.error(f"{tool_name} Wrapper: Error parsing input: {e}, content received: '{user_content_str}'", exc_info=True)
-            # Fallback: instruct LLM to call tool with an error indicator or minimal valid args
-            # The tool itself should handle malformed/missing inputs gracefully.
-            error_tool_args = ConstructGitHubUrlToolInput(issue_number="ERROR_PARSING_INITIAL_INPUT").model_dump_json()
-            return f"Your task is to call the '{tool_name}' tool with arguments {error_tool_args}. Input parsing failed. Output only the tool call."
+
+        except (json.JSONDecodeError, ValidationError, ValueError) as e: 
+            logger.error(f"{tool_name} Wrapper: Error validating/processing payload '{payload_to_validate}': {e}", exc_info=True)
+            error_tool_args = json.dumps({"issue_number": "ERROR_PROCESSING_PAYLOAD"}) # Ensure issue_number is int if tool expects
+            return f"Your task is to call the '{tool_name}' tool with arguments {error_tool_args}. Payload processing failed. Output only the tool call."
             
-    # Fallback if no user_content_str
     logger.warning(f"{tool_name} Wrapper: No user_content provided.")
-    empty_tool_args = ConstructGitHubUrlToolInput(issue_number="MISSING_INPUT").model_dump_json()
+    empty_tool_args = json.dumps({"issue_number": 0}) # Default to a valid int if tool expects
     return f"Your task is to call the '{tool_name}' tool with arguments {empty_tool_args}. No input provided. Output only the tool call."
 
-construct_url_wrapper_agent = LlmAgent(
-    name="ConstructUrlWrapperAgent",
+get_issue_description_wrapper_agent = LlmAgent(
+    name="GetIssueDescriptionWrapperAgent",
     model=Gemini(model=DEFAULT_MODEL_NAME),
-    instruction=construct_url_instruction_provider,
-    tools=[ConstructGitHubUrlTool()],
+    instruction=get_issue_description_instruction_provider,
+    tools=[GetGithubIssueDescriptionTool()],
     disallow_transfer_to_parent=True,
     disallow_transfer_to_peers=True,
     before_model_callback=log_prompt_before_model_call,
     generate_content_config=genai_types.GenerateContentConfig(temperature=0)
 )
 
-# 2. Wrapper for ExtractGitHubIssueDetailsTool
-def extract_details_instruction_provider(context: ReadonlyContext) -> str:
-    user_content_json_str = get_user_content_text_from_readonly_context(context) 
-    tool_name = ExtractGitHubIssueDetailsTool().name
-    if user_content_json_str:
-        try:
-            # user_content_json_str is the JSON output of ConstructGitHubUrlTool (ConstructGitHubUrlToolOutput)
-            # It will be like: {"url": "...", "error": "..."}
-            # This dict is directly usable as args for ExtractGitHubIssueDetailsTool
-            # as its input schema ExtractGitHubIssueDetailsToolInput matches this.
-            tool_arg_json = user_content_json_str # Pass the JSON string directly
-            return f"Your task is to call the '{tool_name}' tool with the following JSON arguments: {tool_arg_json}. Output only the tool call."
-        except Exception as e: # Should not happen if previous tool outputs valid JSON
-            logger.error(f"{tool_name} Wrapper: Error processing input: {e}, content: {user_content_json_str}", exc_info=True)
-            error_args = ExtractGitHubIssueDetailsToolInput(url="", error=f"Input processing failed for {tool_name}: {e}").model_dump_json()
-            return f"Your task is to call the '{tool_name}' tool with arguments {error_args}. Output only the tool call."
-    logger.warning(f"{tool_name} Wrapper: No user_content provided.")
-    empty_tool_args = ExtractGitHubIssueDetailsToolInput(url="", error="No input from previous step").model_dump_json()
-    return f"Your task is to call the '{tool_name}' tool with arguments {empty_tool_args}. Output only the tool call."
+# Callback for adk_guidance_wrapper_agent to ensure its output is a JSON string
+async def adk_guidance_wrapper_after_tool_callback(
+    tool: BaseTool,
+    args: dict,
+    tool_context: ToolContext,
+    tool_response: dict 
+) -> genai_types.Content | None:
+    if tool.name == ADKGuidanceTool().name:
+        json_output_str = json.dumps(tool_response)
+        logger.info(f"ADKGuidanceWrapperAgent (after_tool_callback): Final output as JSON string: {json_output_str[:200]}")
+        return genai_types.Content(parts=[genai_types.Part(text=json_output_str)])
+    return None
 
-extract_details_wrapper_agent = LlmAgent(
-    name="ExtractDetailsWrapperAgent",
-    model=Gemini(model=DEFAULT_MODEL_NAME),
-    instruction=extract_details_instruction_provider,
-    tools=[ExtractGitHubIssueDetailsTool()],
-    disallow_transfer_to_parent=True,
-    disallow_transfer_to_peers=True,
-    before_model_callback=log_prompt_before_model_call,
-    generate_content_config=genai_types.GenerateContentConfig(temperature=0)
-)
-
-# 3. Wrapper for HandleExtractionResultTool
-def handle_extraction_instruction_provider(context: ReadonlyContext) -> str:
-    user_content_json_str = get_user_content_text_from_readonly_context(context)
-    tool_name = HandleExtractionResultTool().name
-    if user_content_json_str:
-        # user_content_json_str is JSON of ExtractionResultInput (output of ExtractGitHubIssueDetailsTool)
-        # Tool expects args matching ExtractionResultInput schema.
-        return f"Your task is to call the '{tool_name}' tool with the following JSON arguments: {user_content_json_str}. Output only the tool call."
-    logger.warning(f"{tool_name} Wrapper: No user_content provided.")
-    empty_tool_args = ExtractionResultInput(error="No input from previous step").model_dump_json(exclude_none=True)
-    return f"Your task is to call the '{tool_name}' tool with arguments {empty_tool_args}. Output only the tool call."
-
-handle_extraction_wrapper_agent = LlmAgent(
-    name="HandleExtractionWrapperAgent",
-    model=Gemini(model=DEFAULT_MODEL_NAME),
-    instruction=handle_extraction_instruction_provider,
-    tools=[HandleExtractionResultTool()],
-    disallow_transfer_to_parent=True,
-    disallow_transfer_to_peers=True,
-    before_model_callback=log_prompt_before_model_call,
-    generate_content_config=genai_types.GenerateContentConfig(temperature=0)
-)
-
-# 4. Wrapper for CleanGitHubIssueTextTool
-def clean_text_instruction_provider(context: ReadonlyContext) -> str:
-    user_content_json_str = get_user_content_text_from_readonly_context(context)
-    tool_name = CleanGitHubIssueTextTool().name
-    if user_content_json_str:
-        try:
-            # user_content_json_str is JSON of HandleExtractionResultToolOutput {"text_content": "..."}
-            input_dict_from_prev_tool = json.loads(user_content_json_str)
-            raw_text = input_dict_from_prev_tool.get("text_content", "") 
-            
-            tool_input_obj = CleanGitHubIssueTextToolInput(raw_text=raw_text)
-            tool_arg_json = tool_input_obj.model_dump_json()
-            return f"Your task is to call the '{tool_name}' tool with the following JSON arguments: {tool_arg_json}. Output only the tool call."
-        except Exception as e:
-            logger.error(f"{tool_name} Wrapper: Error parsing input: {e}, content: {user_content_json_str}", exc_info=True)
-            error_args = CleanGitHubIssueTextToolInput(raw_text=f"Input parsing failed for {tool_name}: {e}").model_dump_json()
-            return f"Your task is to call the '{tool_name}' tool with arguments {error_args}. Output only the tool call."
-    logger.warning(f"{tool_name} Wrapper: No user_content provided.")
-    empty_tool_args = CleanGitHubIssueTextToolInput(raw_text="No input from previous step").model_dump_json()
-    return f"Your task is to call the '{tool_name}' tool with arguments {empty_tool_args}. Output only the tool call."
-
-clean_text_wrapper_agent = LlmAgent(
-    name="CleanTextWrapperAgent",
-    model=Gemini(model=DEFAULT_MODEL_NAME),
-    instruction=clean_text_instruction_provider,
-    tools=[CleanGitHubIssueTextTool()],
-    disallow_transfer_to_parent=True,
-    disallow_transfer_to_peers=True,
-    before_model_callback=log_prompt_before_model_call,
-    generate_content_config=genai_types.GenerateContentConfig(temperature=0)
-)
-
-# 5. Wrapper for ADKGuidanceTool
+# 2. Wrapper for ADKGuidanceTool
 def adk_guidance_instruction_provider(context: ReadonlyContext) -> str:
     user_content_json_str = get_user_content_text_from_readonly_context(context)
     tool_name = ADKGuidanceTool().name
+    
+    document_text = "Error: Could not retrieve valid content from the previous step." 
+
     if user_content_json_str:
         try:
-            # user_content_json_str is JSON of CleanGitHubIssueTextToolOutput {"cleaned_text": "..."}
             input_dict_from_prev_tool = json.loads(user_content_json_str)
-            cleaned_text = input_dict_from_prev_tool.get("cleaned_text", "")
+            
+            error_message = input_dict_from_prev_tool.get("error")
+            description_text = input_dict_from_prev_tool.get("description")
 
-            tool_input_obj = ADKGuidanceToolInput(document_text=cleaned_text)
+            if error_message is not None:
+                document_text = f"Error retrieving GitHub issue: {error_message}"
+            elif description_text is not None:
+                document_text = description_text if description_text else "The GitHub issue description is empty."
+            else:
+                document_text = "Error: No description or error message found from GitHub issue retrieval."
+            
+            tool_input_obj = ADKGuidanceToolInput(document_text=document_text)
             tool_arg_json = tool_input_obj.model_dump_json()
             return f"Your task is to call the '{tool_name}' tool with the following JSON arguments: {tool_arg_json}. Output only the tool call."
         except Exception as e:
-            logger.error(f"{tool_name} Wrapper: Error parsing input: {e}, content: {user_content_json_str}", exc_info=True)
+            logger.error(f"{tool_name} Wrapper: Error parsing input from previous step: {e}, content: {user_content_json_str}", exc_info=True)
             error_args = ADKGuidanceToolInput(document_text=f"Input parsing failed for {tool_name}: {e}").model_dump_json()
             return f"Your task is to call the '{tool_name}' tool with arguments {error_args}. Output only the tool call."
-    logger.warning(f"{tool_name} Wrapper: No user_content provided.")
+            
+    logger.warning(f"{tool_name} Wrapper: No user_content provided from previous step.")
     empty_tool_args = ADKGuidanceToolInput(document_text="No input from previous step").model_dump_json()
     return f"Your task is to call the '{tool_name}' tool with arguments {empty_tool_args}. Output only the tool call."
 
@@ -194,6 +143,7 @@ adk_guidance_wrapper_agent = LlmAgent(
     disallow_transfer_to_parent=True,
     disallow_transfer_to_peers=True,
     before_model_callback=log_prompt_before_model_call,
+    after_tool_callback=adk_guidance_wrapper_after_tool_callback, 
     generate_content_config=genai_types.GenerateContentConfig(temperature=0)
 )
 
@@ -201,16 +151,12 @@ adk_guidance_wrapper_agent = LlmAgent(
 github_issue_processing_agent = SequentialAgent(
     name="github_issue_processing_sequential_agent",
     description=(
-        "Processes a GitHub issue by fetching its details, cleaning the content, "
-        "and providing ADK-specific guidance. Input should be a JSON string "
-        "like '{\"request\": \"{\\\"issue_number\\\": \\\"123\\\"}\"}'. "
+        "Processes a GitHub issue by fetching its description and providing ADK-specific guidance. "
+        "Input should be a JSON string representing the issue details, like '{\"issue_number\": \"123\"}'. "
         "Output will be a JSON string containing the guidance or an error."
     ),
     sub_agents=[
-        construct_url_wrapper_agent,
-        extract_details_wrapper_agent,
-        handle_extraction_wrapper_agent,
-        clean_text_wrapper_agent,
-        adk_guidance_wrapper_agent,
+        get_issue_description_wrapper_agent, 
+        adk_guidance_wrapper_agent,          
     ]
 )

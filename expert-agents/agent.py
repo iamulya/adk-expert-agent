@@ -19,7 +19,6 @@ from google.genai import types as genai_types
 from .context_loader import get_escaped_adk_context_for_llm
 from .config import DEFAULT_MODEL_NAME
 from .callbacks import log_prompt_before_model_call
-from .tools import get_gemini_api_key_from_secret_manager
 from .sequential_issue_processor import github_issue_processing_agent, GitHubIssueProcessingInput, SequentialProcessorFinalOutput 
 
 load_dotenv()
@@ -45,21 +44,21 @@ async def root_agent_after_tool_callback(
         response_text = "Error: Could not process response from sequential agent."
         if isinstance(tool_response, str):
             try:
+                # The tool_response should be a JSON string like {"guidance": "..."}
                 response_dict = json.loads(tool_response)
-                # Assuming the final output structure is ADKGuidanceToolOutput
-                # which has a "guidance" field.
                 validated_output = SequentialProcessorFinalOutput.model_validate(response_dict)
                 response_text = validated_output.guidance
             except json.JSONDecodeError:
                 logger.error(f"RootAgent: Failed to decode JSON response from sequential agent: {tool_response}", exc_info=True)
-                if "error" in tool_response.lower() or "message" in tool_response.lower() or "empty" in tool_response.lower():
+                # Check if tool_response itself is an error message or simple string
+                if "error" in tool_response.lower() or "message" in tool_response.lower() or not tool_response.strip().startswith("{"):
                      response_text = tool_response 
                 else:
                     response_text = f"Error: Sequential agent returned non-JSON string: {tool_response[:200]}"
             except Exception as e: 
                 logger.error(f"RootAgent: Error validating/extracting from sequential agent response string: {e}. Response: {tool_response}", exc_info=True)
                 response_text = f"Error: Sequential agent returned an unexpected structure: {tool_response[:200]}"
-        elif isinstance(tool_response, dict): 
+        elif isinstance(tool_response, dict): # Should ideally be string from AgentTool
              try:
                 validated_output = SequentialProcessorFinalOutput.model_validate(tool_response)
                 response_text = validated_output.guidance
@@ -105,30 +104,18 @@ def root_agent_instruction_provider(context: ReadonlyContext) -> str:
     if extracted_issue_number:
         logger.info(f"RootAgent (instruction_provider): Found issue number '{extracted_issue_number}'. Instructing to call GitHubIssueProcessingSequentialAgent.")
         
-        tool_actual_input_obj = GitHubIssueProcessingInput(issue_number=extracted_issue_number)
-        # This is the JSON string that needs to be the *value* of the "request" key
-        tool_actual_input_json_str_value = tool_actual_input_obj.model_dump_json() 
-        
-        # The LLM needs to generate args like: {"request": "{\"issue_number\":\"123\"}"}
-        # So, we construct the example string for the LLM carefully.
-        # The value of "request" must be a string containing escaped JSON.
-        
-        # Method 1: Manually construct the example string for the LLM
-        # final_tool_arg_json_str_for_llm = f'{{"request": "{tool_actual_input_json_str_value.replace("\"", "\\\"")}"}}'
-
-        # Method 2: Use json.dumps which should handle escaping correctly if the structure is right.
-        # The structure for the LLM's args should be a dict.
-        # The value for the "request" key in that dict should be the string `tool_actual_input_json_str_value`.
-        llm_tool_args_dict = {"request": tool_actual_input_json_str_value}
-        final_tool_arg_json_str_for_llm = json.dumps(llm_tool_args_dict)
+        # This is the JSON string that the first sub-agent of SequentialAgent expects.
+        # e.g., "{\"issue_number\":\"123\"}"
+        sequential_agent_input_payload_str = GitHubIssueProcessingInput(issue_number=extracted_issue_number).model_dump_json()
         
         system_instruction = f"""
 You are an expert orchestrator for Google's Agent Development Kit (ADK).
 The user is asking about GitHub issue number {extracted_issue_number} for 'google/adk-python'.
 Your task is to call the '{github_issue_processing_agent.name}' tool.
-You MUST pass the arguments to the tool using the following JSON argument format:
-{final_tool_arg_json_str_for_llm}
-Ensure the value for the "request" key is a JSON string.
+The tool expects a single argument named "request".
+The value for the "request" argument MUST be the following JSON string:
+{sequential_agent_input_payload_str}
+Ensure the value you provide for the "request" key is precisely this JSON string.
 This is your only action for this turn.
 """
     elif is_github_keywords_present:
@@ -148,8 +135,6 @@ ADK Knowledge Context (for general ADK questions):
 --- END OF ADK CONTEXT ---
 """
     return system_instruction
-
-API_KEY = get_gemini_api_key_from_secret_manager()
 
 root_agent_tools = [
     AgentTool(agent=github_issue_processing_agent),

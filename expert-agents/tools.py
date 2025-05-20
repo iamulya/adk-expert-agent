@@ -2,7 +2,7 @@ import os
 import asyncio
 import re
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, override
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
@@ -14,6 +14,7 @@ from browser_use import Browser, BrowserConfig, BrowserContextConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
 from .config import DEFAULT_MODEL_NAME
 from .context_loader import get_escaped_adk_context_for_llm
+from .config import API_KEY
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -33,34 +34,13 @@ BOILERPLATE_STRINGS_TO_REMOVE = [
     "Additional context"
 ]
 
-_GEMINI_API_KEY = None
+_GITHUB_PAT = None 
 
-def get_gemini_api_key_from_secret_manager() -> str:
-    global _GEMINI_API_KEY
-    if _GEMINI_API_KEY:
-        return _GEMINI_API_KEY
-    project_id = os.getenv("GCP_PROJECT_ID")
-    secret_id = os.getenv("GEMINI_API_KEY_SECRET_ID")
-    version_id = os.getenv("GEMINI_API_KEY_SECRET_VERSION", "1") 
-    if not project_id or not secret_id:
-        raise ValueError("GCP_PROJECT_ID and GEMINI_API_KEY_SECRET_ID must be set in .env")
-    client = secretmanager.SecretManagerServiceClient()
-    name = f"projects/{project_id}/secrets/{secret_id}/versions/{version_id}"
-    print(f"Fetching secret: {name}")
-    try:
-        response = client.access_secret_version(name=name)
-        _GEMINI_API_KEY = response.payload.data.decode("UTF-8")
-        os.environ["GOOGLE_API_KEY"] = _GEMINI_API_KEY 
-        print("Successfully fetched API key from Secret Manager.")
-        return _GEMINI_API_KEY
-    except Exception as e:
-        print(f"Error fetching secret from Secret Manager: {e}")
-        raise
 
 def get_github_pat_from_secret_manager() -> str:
-    global _GEMINI_API_KEY
-    if _GEMINI_API_KEY:
-        return _GEMINI_API_KEY
+    global _GITHUB_PAT 
+    if _GITHUB_PAT: 
+        return _GITHUB_PAT 
     project_id = os.getenv("GCP_PROJECT_ID")
     secret_id = os.getenv("GITHUB_API_PAT_SECRET_ID")
     version_id = os.getenv("GITHUB_API_PAT_SECRET_VERSION", "1") 
@@ -68,14 +48,14 @@ def get_github_pat_from_secret_manager() -> str:
         raise ValueError("GCP_PROJECT_ID and GITHUB_API_PAT_SECRET_ID must be set in .env")
     client = secretmanager.SecretManagerServiceClient()
     name = f"projects/{project_id}/secrets/{secret_id}/versions/{version_id}"
-    print(f"Fetching secret: {name}")
+    print(f"Fetching GitHub PAT secret: {name}") 
     try:
         response = client.access_secret_version(name=name)
-        GITHUB_PERSONAL_ACCESS_TOKEN = response.payload.data.decode("UTF-8")
-        print("Successfully fetched API key from Secret Manager.")
-        return GITHUB_PERSONAL_ACCESS_TOKEN
+        _GITHUB_PAT = response.payload.data.decode("UTF-8") 
+        print("Successfully fetched GitHub PAT from Secret Manager.") 
+        return _GITHUB_PAT
     except Exception as e:
-        print(f"Error fetching secret from Secret Manager: {e}")
+        print(f"Error fetching GitHub PAT from Secret Manager: {e}") 
         raise
 
 class ConstructGitHubUrlToolInput(BaseModel):
@@ -99,7 +79,8 @@ class ConstructGitHubUrlTool(BaseTool):
             parameters=ConstructGitHubUrlToolInput.model_json_schema()
         )
 
-    async def run_async(self, args: Dict[str, Any], tool_context: ToolContext) -> Dict[str, Any]: # Return dict
+    async def run_async(self, args: Dict[str, Any], tool_context: ToolContext) -> Dict[str, Any]: 
+        tool_context.actions.skip_summarization = True # Ensure flow termination
         try:
             input_data = ConstructGitHubUrlToolInput.model_validate(args)
             issue_number = input_data.issue_number
@@ -112,7 +93,6 @@ class ConstructGitHubUrlTool(BaseTool):
 
 
 class ExtractionResultInput(BaseModel):
-    # This model directly matches the output structure of ExtractGitHubIssueDetailsTool
     extracted_details: Optional[str] = None
     error: Optional[str] = None
     message: Optional[str] = None
@@ -134,7 +114,8 @@ class HandleExtractionResultTool(BaseTool):
             parameters=ExtractionResultInput.model_json_schema() 
         )
 
-    async def run_async(self, args: Dict[str, Any], tool_context: ToolContext) -> Dict[str, Any]: # Return dict
+    async def run_async(self, args: Dict[str, Any], tool_context: ToolContext) -> Dict[str, Any]: 
+        tool_context.actions.skip_summarization = True # Ensure flow termination
         try:
             input_data = ExtractionResultInput.model_validate(args)
             if input_data.extracted_details:
@@ -185,11 +166,12 @@ class CleanGitHubIssueTextTool(BaseTool):
         for boilerplate in BOILERPLATE_STRINGS_TO_REMOVE:
             cleaned_text = cleaned_text.replace(boilerplate, "")
         cleaned_text = re.sub(r'\n\s*\n', '\n\n', cleaned_text).strip()
-        if not cleaned_text: # Check after cleaning
+        if not cleaned_text: 
             return "GitHub issue content was empty after cleaning."
         return cleaned_text
 
-    async def run_async(self, args: Dict[str, Any], tool_context: ToolContext) -> Dict[str, Any]: # Return dict
+    async def run_async(self, args: Dict[str, Any], tool_context: ToolContext) -> Dict[str, Any]: 
+        tool_context.actions.skip_summarization = True # Ensure flow termination
         try:
             input_data = CleanGitHubIssueTextToolInput.model_validate(args)
             cleaned_text = self.clean_text_logic(input_data.raw_text)
@@ -211,7 +193,7 @@ class ADKGuidanceTool(BaseTool):
             name="adk_guidance_tool",
             description="Provides ADK guidance based on the provided document text and ADK context."
         )
-        self.llm = ChatGoogleGenerativeAI(model=DEFAULT_MODEL_NAME, temperature=0.1)
+        self.llm = ChatGoogleGenerativeAI(model=DEFAULT_MODEL_NAME, temperature=0.1, google_api_key=API_KEY,)
         self.adk_context_for_llm = get_escaped_adk_context_for_llm()
 
     def _get_declaration(self):
@@ -221,7 +203,8 @@ class ADKGuidanceTool(BaseTool):
             parameters=ADKGuidanceToolInput.model_json_schema()
         )
 
-    async def run_async(self, args: Dict[str, Any], tool_context: ToolContext) -> Dict[str, Any]: # Return dict
+    async def run_async(self, args: Dict[str, Any], tool_context: ToolContext) -> Dict[str, Any]: 
+        tool_context.actions.skip_summarization = True # Ensure flow termination
         try:
             input_data = ADKGuidanceToolInput.model_validate(args)
             document_text = input_data.document_text
@@ -229,7 +212,8 @@ class ADKGuidanceTool(BaseTool):
             if document_text.startswith("Error fetching issue details:") or \
                document_text.startswith("Message from issue fetcher:") or \
                document_text.startswith("Error: No content extracted") or \
-               document_text == "GitHub issue content was empty after cleaning.":
+               document_text == "GitHub issue content was empty after cleaning." or \
+               document_text.startswith("Error retrieving GitHub issue:"): 
                 logger.warning(f"Tool: {self.name} received prior error/message: {document_text}")
                 return ADKGuidanceToolOutput(guidance=document_text).model_dump()
 
@@ -265,9 +249,9 @@ This is your final response to be presented to the user. Do not ask further ques
             logger.error(f"Tool: {self.name} - Error generating guidance: {e}. Args: {args}", exc_info=True)
             return ADKGuidanceToolOutput(guidance=f"Error generating ADK guidance: {e}").model_dump()
 
-class ExtractGitHubIssueDetailsToolInput(BaseModel): # Explicit input model for clarity
+class ExtractGitHubIssueDetailsToolInput(BaseModel): 
     url: str
-    error: Optional[str] = None # To receive propagated errors
+    error: Optional[str] = None 
 
 class ExtractGitHubIssueDetailsTool(BaseTool):
     def __init__(self):
@@ -285,7 +269,8 @@ class ExtractGitHubIssueDetailsTool(BaseTool):
             parameters=ExtractGitHubIssueDetailsToolInput.model_json_schema()
         )
 
-    async def run_async(self, args: Dict[str, Any], tool_context: ToolContext) -> Dict[str, Any]: # Return dict
+    async def run_async(self, args: Dict[str, Any], tool_context: ToolContext) -> Dict[str, Any]: 
+        tool_context.actions.skip_summarization = True # Ensure flow termination
         try:
             input_data = ExtractGitHubIssueDetailsToolInput.model_validate(args)
             url = input_data.url
@@ -299,7 +284,7 @@ class ExtractGitHubIssueDetailsTool(BaseTool):
             logger.error(f"Tool: {self.name} - Received error from previous step: {previous_error}")
             return ExtractionResultInput(error=previous_error).model_dump(exclude_none=True) 
         
-        if not url: # Should be caught by Pydantic, but good to double check
+        if not url: 
             logger.error(f"Tool: {self.name} - URL not provided in args and no previous error.")
             return ExtractionResultInput(error="URL is required for ExtractGitHubIssueDetailsTool.").model_dump(exclude_none=True)
         
@@ -352,9 +337,8 @@ class ExtractGitHubIssueDetailsTool(BaseTool):
             logger.error(f"Tool: {self.name} - Error extracting content from {url}. {error_message}")
             return ExtractionResultInput(error=error_message).model_dump(exclude_none=True)
         
-import requests # You might need to pip install requests
+import requests 
 from typing import Dict, Any
-from google.adk.tools.base_tool import override # Correct import for override
 from google.genai import types
 
 class GetGithubIssueDescriptionTool(BaseTool):
@@ -391,32 +375,23 @@ class GetGithubIssueDescriptionTool(BaseTool):
                     description="The number of the GitHub issue.",
                 ),
             },
-            required=["owner", "repo", "issue_number"],
+            required=["issue_number"], 
         ),
     )
 
   async def run_async(
       self, *, args: Dict[str, Any], tool_context: ToolContext
   ) -> Dict[str, Any]:
-    """
-    Fetches the issue description from GitHub.
-
-    Args:
-        args: A dictionary containing 'owner', 'repo', and 'issue_number'.
-        tool_context: The context for the tool invocation.
-
-    Returns:
-        A dictionary containing the 'description' of the issue or an 'error' message.
-    """
-    owner = args.get("owner")
-    repo = args.get("repo")
+    tool_context.actions.skip_summarization = True # Add this line
+    owner = args.get("owner", "google") 
+    repo = args.get("repo", "adk-python") 
     issue_number = args.get("issue_number")
 
-    if not owner:
+    if not owner: 
       return {"error": "Missing required argument: owner."}
-    if not repo:
+    if not repo: 
       return {"error": "Missing required argument: repo."}
-    if issue_number is None: # Check for None as 0 is a valid issue number (though rare)
+    if issue_number is None: 
       return {"error": "Missing required argument: issue_number."}
 
     api_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}"
@@ -424,39 +399,40 @@ class GetGithubIssueDescriptionTool(BaseTool):
     headers = {
         "Accept": "application/vnd.github+json",
         "User-Agent": "google-adk-tool", 
-        "Authorization": f"token $GITHUB_PERSONAL_ACCESS_TOKEN",
+        "Authorization": f"token {GITHUB_PERSONAL_ACCESS_TOKEN}", 
     }
 
     try:
-      # Using synchronous requests library within an async function.
-      # For a truly async operation, httpx would be preferred.
-      # However, ADK's RestApiTool also uses synchronous requests.
       response = requests.get(api_url, headers=headers, timeout=10)
-      response.raise_for_status()  # Raises HTTPError for bad responses (4xx or 5xx)
+      response.raise_for_status()  
       
       issue_data = response.json()
       description = issue_data.get("body")
 
-      if description is None: # Handles empty description string as well
-        return {"description": ""} # Return empty string if body is null/None
-      return {"description": str(description)} # Ensure it's a string
+      if description is None: 
+        return {"description": ""} 
+      return {"description": str(description)} 
       
     except requests.exceptions.HTTPError as e:
       error_message = f"HTTP error occurred: {e.response.status_code}"
       try:
           error_details = e.response.json()
           error_message += f" - {error_details.get('message', e.response.text)}"
-      except ValueError: # In case response is not JSON
+      except ValueError: 
           error_message += f" - {e.response.text}"
+      logger.error(f"Tool: {self.name} - GitHub API HTTPError: {error_message} for URL {api_url}", exc_info=True)
       return {"error": error_message}
     except requests.exceptions.Timeout:
+        logger.error(f"Tool: {self.name} - GitHub API Timeout for URL {api_url}", exc_info=True)
         return {"error": f"Request timed out while fetching issue from {api_url}."}
     except requests.exceptions.RequestException as e:
+        logger.error(f"Tool: {self.name} - GitHub API RequestException: {e} for URL {api_url}", exc_info=True)
         return {"error": f"A network request failed: {e}"}
-    except ValueError: # Catches JSONDecodeError if response.json() fails
+    except ValueError: 
+        logger.error(f"Tool: {self.name} - GitHub API JSONDecodeError for URL {api_url}", exc_info=True)
         return {"error": "Failed to decode JSON response from GitHub API."}
     except Exception as e:
+        logger.error(f"Tool: {self.name} - GitHub API Unexpected error: {e} for URL {api_url}", exc_info=True)
         return {"error": f"An unexpected error occurred: {str(e)}"}
 
-# You can also create a global instance for easy import
 get_github_issue_description = GetGithubIssueDescriptionTool()
