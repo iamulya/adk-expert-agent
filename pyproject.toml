@@ -5,10 +5,12 @@ description = "ADK Expert Bot using browser-use"
 requires-python = ">=3.11"
 dependencies = [
     "google-adk>=1.0.0",
-    "browser-use",
+    "browser-use", # Keep if other parts still use it
     "langchain-google-genai",
     "google-cloud-secret-manager",
-    "python-dotenv"
+    "python-dotenv",
+    "google-cloud-storage", # Added dependency
+    "pydantic>=2.0" # Ensure pydantic is explicit if needed for Literal, etc.
 ]
 
 [project.scripts]
