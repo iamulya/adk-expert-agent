@@ -1,7 +1,7 @@
 # My ADK Expert Agent
 
-This agent is an expert on Google's Agent Development Kit (ADK) version 0.5.0.
-It can answer general questions about ADK and help find solutions to GitHub issues.
+This agent is an expert on Google's Agent Development Kit (ADK) version 1.0.0.
+It can answer general questions about ADK and help find solutions/guidance for GitHub issues.
 
 ## Setup
 

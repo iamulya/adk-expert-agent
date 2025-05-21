@@ -223,8 +223,8 @@ class ADKGuidanceTool(BaseTool):
                 return ADKGuidanceToolOutput(guidance=guidance_message).model_dump()
 
             prompt = f"""
-You are an expert on Google's Agent Development Kit (ADK) version 0.5.0.
-Your task is to provide guidance and potential solutions based on your comprehensive ADK knowledge and the provided document text.
+You are an expert on Google's Agent Development Kit (ADK) version 1.0.0.
+Your task is to provide feedback based on your comprehensive ADK knowledge and the provided document text.
 
 Your ADK Knowledge Context:
 --- START OF ADK CONTEXT ---

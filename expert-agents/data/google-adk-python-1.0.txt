@@ -28,7 +28,6 @@ Directory structure:
     │           │   ├── loop_agent.py
     │           │   ├── parallel_agent.py
     │           │   ├── readonly_context.py
-    │           │   ├── remote_agent.py
     │           │   ├── run_config.py
     │           │   ├── sequential_agent.py
     │           │   └── transcription_entry.py
@@ -128,11 +127,11 @@ Directory structure:
     │           └── tools/
     │               ├── __init__.py
     │               ├── _automatic_function_calling_util.py
+    │               ├── _built_in_code_execution_tool.py
     │               ├── _memory_entry_utils.py
     │               ├── agent_tool.py
     │               ├── base_tool.py
     │               ├── base_toolset.py
-    │               ├── built_in_code_execution_tool.py
     │               ├── crewai_tool.py
     │               ├── enterprise_search_tool.py
     │               ├── example_tool.py
@@ -232,7 +231,8 @@ FILE: README.md
     <h3 align="center">
       Important Links:
       <a href="https://google.github.io/adk-docs/">Docs</a> &
-      <a href="https://github.com/google/adk-samples">Samples</a>.
+      <a href="https://github.com/google/adk-samples">Samples</a> &
+      <a href="https://github.com/google/adk-java">Java ADK</a>.
     </h3>
 </html>
 
@@ -350,7 +350,7 @@ for how they can work together.
 
 ## 🤝 Contributing
 
-We welcome contributions from the community! Whether it's bug reports, feature requests, documentation improvements, or code contributions, please see our 
+We welcome contributions from the community! Whether it's bug reports, feature requests, documentation improvements, or code contributions, please see our
 - [General contribution guideline and flow](https://google.github.io/adk-docs/contributing-guide/#questions).
 - Then if you want to contribute code, please read [Code Contributing Guidelines](./CONTRIBUTING.md) to get started.
 
@@ -372,6 +372,61 @@ This feature is subject to the "Pre-GA Offerings Terms" in the General Service T
 FILE: CHANGELOG.md
 ================================================
 # Changelog
+
+## 1.0.0
+
+### ⚠ BREAKING CHANGES
+
+* Evaluation dataset schema is finalized with strong-type pydantic models.
+  (previously saved eval file needs re-generation, for both adk eval cli and
+  the eval tab in adk web UI).
+* `BuiltInCodeExecutor` (in code_executors package) replaces
+  `BuiltInCodeExecutionTool` (previously in tools package).
+* All methods in services are now async, including session service, artifact
+  service and memory service.
+  * `list_events` and `close_session` methods are removed from session service.
+* agent.py file structure with MCP tools are now easier and simpler ([now](https://github.com/google/adk-python/blob/3b5232c14f48e1d5b170f3698d91639b079722c8/contributing/samples/mcp_stdio_server_agent/agent.py#L33) vs [before](https://github.com/google/adk-python/blob/a4adb739c0d86b9ae4587547d2653d568f6567f2/contributing/samples/mcp_agent/agent.py#L41)).
+  Old format is not working anymore.
+* `Memory` schema and `MemoryService` is redesigned.
+* Mark various class attributes as private in the classes in the `tools` package.
+* Disabled session state injection if instruction provider is used.
+  (so that you can have `{var_name}` in the instruction, which is required for code snippets)
+* Toolbox integration is revamped: tools/toolbox_tool.py → tools/toolbox_toolset.py.
+* Removes the experimental `remote_agent.py`. We'll redesign it and bring it back.
+
+### Features
+
+* Dev UI:
+  * A brand new trace view for overall agent invocation.
+  * A revamped evaluation tab and comparison view for checking eval results.
+* Introduced `BaseToolset` to allow dynamically add/remove tools for agents.
+  * Revamped MCPToolset with the new BaseToolset interface.
+  * Revamped GoogleApiTool, GoogleApiToolset and ApplicationIntegrationToolset with the new BaseToolset interface.
+  * Resigned agent.py file structure when needing MCPToolset.
+  * Added ToolboxToolset.
+* Redesigned strong-typed agent evaluation schema.
+  * Allows users to create more cohesive eval sets.
+  * Allows evals to be extended for non-text modality.
+  * Allows for a structured interaction with the uber eval system.
+* Redesigned Memory schema and MemoryService interfaces.
+* Added token usage to LlmResponse.
+* Allowed specifying `--adk_version` in `adk deploy cloud_run` cli. Default is the current version.
+
+### Bug Fixes
+
+* Fixed `adk deploy cloud_run` failing bug.
+* Fixed logs not being printed due to `google-auth` library.
+
+### Miscellaneous Chores
+
+* Display full help text when adk cli receives invalid arguments.
+* `adk web` now binds `127.0.0.1` by default, instead of 0.0.0.0.
+* `InMemoryRunner` now takes `BaseAgent` in constructor.
+* Various docstring improvements.
+* Various UI tweaks.
+* Various bug fixes.
+* Update various contributing/samples for contributors to validate the implementation.
+
 
 ## 0.5.0
 
@@ -1350,7 +1405,6 @@ dependencies = [
   "sqlalchemy>=2.0",                         # SQL database ORM
   "tzlocal>=5.3",                            # Time zone utilities
   "uvicorn>=0.34.0",                         # ASGI server for FastAPI
-  "toolbox-core>=0.1.0",
   # go/keep-sorted end
 ]
 dynamic = ["version"]
@@ -1418,6 +1472,7 @@ extensions = [
   "litellm>=1.63.11",                     # For LiteLLM support
   "llama-index-readers-file>=0.4.0",      # For retrieval using LlamaIndex.
   "lxml>=5.3.0",                          # For load_web_page tool.
+  "toolbox-core>=0.1.0",                  # For tools.toolbox_toolset.ToolboxToolset
 ]
 
 
@@ -1544,7 +1599,7 @@ from .sessions.base_session_service import BaseSessionService
 from .sessions.in_memory_session_service import InMemorySessionService
 from .sessions.session import Session
 from .telemetry import tracer
-from .tools.built_in_code_execution_tool import built_in_code_execution
+from .tools._built_in_code_execution_tool import built_in_code_execution
 
 logger = logging.getLogger('google_adk.' + __name__)
 
@@ -2211,7 +2266,7 @@ FILE: src/google/adk/version.py
 # limitations under the License.
 
 # version: date+base_cl
-__version__ = "0.5.0"
+__version__ = "1.0.0"
 
 
 
@@ -3961,62 +4016,6 @@ class ReadonlyContext:
 
 
 ================================================
-FILE: src/google/adk/agents/remote_agent.py
-================================================
-# Copyright 2025 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-import json
-from typing import AsyncGenerator
-
-from pydantic import Field
-import requests
-from typing_extensions import override
-
-from ..events.event import Event
-from .base_agent import BaseAgent
-from .invocation_context import InvocationContext
-
-
-class RemoteAgent(BaseAgent):
-  """Experimental, do not use."""
-
-  url: str
-
-  sub_agents: list[BaseAgent] = Field(
-      default_factory=list, init=False, frozen=True
-  )
-  """Sub-agent is disabled in RemoteAgent."""
-
-  @override
-  async def _run_async_impl(
-      self, ctx: InvocationContext
-  ) -> AsyncGenerator[Event, None]:
-    data = {
-        'invocation_id': ctx.invocation_id,
-        'session': ctx.session.model_dump(exclude_none=True),
-    }
-    events = requests.post(self.url, data=json.dumps(data), timeout=120)
-    events.raise_for_status()
-    for event in events.json():
-      e = Event.model_validate(event)
-      e.author = self.name
-      yield e
-
-
-
-================================================
 FILE: src/google/adk/agents/run_config.py
 ================================================
 # Copyright 2025 Google LLC
@@ -4216,6 +4215,7 @@ FILE: src/google/adk/agents/transcription_entry.py
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Optional
 from typing import Union
 
 from google.genai import types
@@ -4232,8 +4232,9 @@ class TranscriptionEntry(BaseModel):
   )
   """The pydantic model config."""
 
-  role: str
-  """The role that created this data, typically "user" or "model"""
+  role: Optional[str] = None
+  """The role that created this data, typically "user" or "model". For function 
+  call, this is None."""
 
   data: Union[types.Blob, types.Content]
   """The data that can be used for transcription"""
@@ -5564,7 +5565,7 @@ from .built_in_code_executor import BuiltInCodeExecutor
 from .code_executor_context import CodeExecutorContext
 from .unsafe_local_code_executor import UnsafeLocalCodeExecutor
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('google_adk.' + __name__)
 
 __all__ = [
     'BaseCodeExecutor',
@@ -5718,7 +5719,6 @@ FILE: src/google/adk/code_executors/built_in_code_executor.py
 # limitations under the License.
 
 from google.genai import types
-from pydantic import Field
 from typing_extensions import override
 
 from ..agents.invocation_context import InvocationContext
@@ -8350,7 +8350,7 @@ class TrajectoryEvaluator(Evaluator):
     tool use trajectories. An exact match scores a 1, 0 otherwise. The final
     number is an average of these individual scores.
 
-    Value range: [0, 1], where 0 is means none of the too use entries aligned,
+    Value range: [0, 1], where 0 means none of the tool use entries aligned,
     and 1 would mean all of them aligned. Higher value is good.
 
     Args:
@@ -12332,22 +12332,28 @@ FILE: src/google/adk/memory/vertex_ai_rag_memory_service.py
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
+from __future__ import annotations
+
 from collections import OrderedDict
 import json
 import os
 import tempfile
 from typing import Optional
+from typing import TYPE_CHECKING
 
 from google.genai import types
 from typing_extensions import override
 from vertexai.preview import rag
 
-from ..events.event import Event
-from ..sessions.session import Session
 from . import _utils
 from .base_memory_service import BaseMemoryService
 from .base_memory_service import SearchMemoryResponse
 from .memory_entry import MemoryEntry
+
+if TYPE_CHECKING:
+  from ..events.event import Event
+  from ..sessions.session import Session
 
 
 class VertexAiRagMemoryService(BaseMemoryService):
@@ -12423,6 +12429,8 @@ class VertexAiRagMemoryService(BaseMemoryService):
       self, *, app_name: str, user_id: str, query: str
   ) -> SearchMemoryResponse:
     """Searches for sessions that match the query using rag.retrieval_query."""
+    from ..events.event import Event
+
     response = rag.retrieval_query(
         text=query,
         rag_resources=self._vertex_rag_store.rag_resources,
@@ -13362,6 +13370,7 @@ class Gemini(BaseLlm):
       )
       response = None
       text = ''
+      usage_metadata = None
       # for sse, similar as bidi (see receive method in gemini_llm_connecton.py),
       # we need to mark those text content as partial and after all partial
       # contents are sent, we send an accumulated event which contains all the
@@ -13370,6 +13379,7 @@ class Gemini(BaseLlm):
       async for response in responses:
         logger.info(_build_response_log(response))
         llm_response = LlmResponse.create(response)
+        usage_metadata = llm_response.usage_metadata
         if (
             llm_response.content
             and llm_response.content.parts
@@ -13387,7 +13397,7 @@ class Gemini(BaseLlm):
               content=types.ModelContent(
                   parts=[types.Part.from_text(text=text)],
               ),
-              usage_metadata=llm_response.usage_metadata,
+              usage_metadata=usage_metadata,
           )
           text = ''
         yield llm_response
@@ -13401,6 +13411,7 @@ class Gemini(BaseLlm):
             content=types.ModelContent(
                 parts=[types.Part.from_text(text=text)],
             ),
+            usage_metadata=usage_metadata,
         )
 
     else:
@@ -15259,7 +15270,7 @@ class BaseSessionService(abc.ABC):
     session.events.append(event)
     return event
 
-  def __update_session_state(self, session: Session, event: Event):
+  def __update_session_state(self, session: Session, event: Event) -> None:
     """Updates the session state based on the event."""
     if not event.actions or not event.actions.state_delta:
       return
@@ -15991,7 +16002,7 @@ class InMemorySessionService(BaseSessionService):
       user_id: str,
       session_id: str,
       config: Optional[GetSessionConfig] = None,
-  ) -> Session:
+  ) -> Optional[Session]:
     return self._get_session_impl(
         app_name=app_name,
         user_id=user_id,
@@ -16006,7 +16017,7 @@ class InMemorySessionService(BaseSessionService):
       user_id: str,
       session_id: str,
       config: Optional[GetSessionConfig] = None,
-  ) -> Session:
+  ) -> Optional[Session]:
     logger.warning('Deprecated. Please migrate to the async method.')
     return self._get_session_impl(
         app_name=app_name,
@@ -16022,7 +16033,7 @@ class InMemorySessionService(BaseSessionService):
       user_id: str,
       session_id: str,
       config: Optional[GetSessionConfig] = None,
-  ) -> Session:
+  ) -> Optional[Session]:
     if app_name not in self.sessions:
       return None
     if user_id not in self.sessions[app_name]:
@@ -16049,7 +16060,9 @@ class InMemorySessionService(BaseSessionService):
 
     return self._merge_state(app_name, user_id, copied_session)
 
-  def _merge_state(self, app_name: str, user_id: str, copied_session: Session):
+  def _merge_state(
+      self, app_name: str, user_id: str, copied_session: Session
+  ) -> Session:
     # Merge app state
     if app_name in self.app_state:
       for key in self.app_state[app_name].keys():
@@ -16379,7 +16392,7 @@ class VertexAiSessionService(BaseSessionService):
     if state:
       session_json_dict['session_state'] = state
 
-    api_response = await self.api_client.async_request(
+    api_response = self.api_client.request(
         http_method='POST',
         path=f'reasoningEngines/{reasoning_engine_id}/sessions',
         request_dict=session_json_dict,
@@ -16391,7 +16404,7 @@ class VertexAiSessionService(BaseSessionService):
 
     max_retry_attempt = 5
     while max_retry_attempt >= 0:
-      lro_response = await self.api_client.async_request(
+      lro_response = self.api_client.request(
           http_method='GET',
           path=f'operations/{operation_id}',
           request_dict={},
@@ -16404,7 +16417,7 @@ class VertexAiSessionService(BaseSessionService):
       max_retry_attempt -= 1
 
     # Get session resource
-    get_session_api_response = await self.api_client.async_request(
+    get_session_api_response = self.api_client.request(
         http_method='GET',
         path=f'reasoningEngines/{reasoning_engine_id}/sessions/{session_id}',
         request_dict={},
@@ -16430,11 +16443,11 @@ class VertexAiSessionService(BaseSessionService):
       user_id: str,
       session_id: str,
       config: Optional[GetSessionConfig] = None,
-  ) -> Session:
+  ) -> Optional[Session]:
     reasoning_engine_id = _parse_reasoning_engine_id(app_name)
 
     # Get session resource
-    get_session_api_response = await self.api_client.async_request(
+    get_session_api_response = self.api_client.request(
         http_method='GET',
         path=f'reasoningEngines/{reasoning_engine_id}/sessions/{session_id}',
         request_dict={},
@@ -16452,7 +16465,7 @@ class VertexAiSessionService(BaseSessionService):
         last_update_time=update_timestamp,
     )
 
-    list_events_api_response = await self.api_client.async_request(
+    list_events_api_response = self.api_client.request(
         http_method='GET',
         path=f'reasoningEngines/{reasoning_engine_id}/sessions/{session_id}/events',
         request_dict={},
@@ -16517,7 +16530,7 @@ class VertexAiSessionService(BaseSessionService):
       self, *, app_name: str, user_id: str, session_id: str
   ) -> None:
     reasoning_engine_id = _parse_reasoning_engine_id(app_name)
-    await self.api_client.async_request(
+    self.api_client.request(
         http_method='DELETE',
         path=f'reasoningEngines/{reasoning_engine_id}/sessions/{session_id}',
         request_dict={},
@@ -16529,7 +16542,7 @@ class VertexAiSessionService(BaseSessionService):
     await super().append_event(session=session, event=event)
 
     reasoning_engine_id = _parse_reasoning_engine_id(session.app_name)
-    await self.api_client.async_request(
+    self.api_client.request(
         http_method='POST',
         path=f'reasoningEngines/{reasoning_engine_id}/sessions/{session.id}:appendEvent',
         request_dict=_convert_event_to_json(event),
@@ -16664,32 +16677,28 @@ FILE: src/google/adk/tools/__init__.py
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# pylint: disable=g-bad-import-order
-from .base_tool import BaseTool
+
 
 from ..auth.auth_tool import AuthToolArguments
 from .apihub_tool.apihub_toolset import APIHubToolset
-from .built_in_code_execution_tool import built_in_code_execution
-from .google_search_tool import google_search
-from .vertex_ai_search_tool import VertexAiSearchTool
+from .base_tool import BaseTool
 from .example_tool import ExampleTool
 from .exit_loop_tool import exit_loop
 from .function_tool import FunctionTool
 from .get_user_choice_tool import get_user_choice_tool as get_user_choice
+from .google_search_tool import google_search
 from .load_artifacts_tool import load_artifacts_tool as load_artifacts
 from .load_memory_tool import load_memory_tool as load_memory
 from .long_running_tool import LongRunningFunctionTool
 from .preload_memory_tool import preload_memory_tool as preload_memory
 from .tool_context import ToolContext
 from .transfer_to_agent_tool import transfer_to_agent
-from .toolbox_toolset import ToolboxToolset
-
+from .vertex_ai_search_tool import VertexAiSearchTool
 
 __all__ = [
     'APIHubToolset',
     'AuthToolArguments',
     'BaseTool',
-    'built_in_code_execution',
     'google_search',
     'VertexAiSearchTool',
     'ExampleTool',
@@ -16701,7 +16710,6 @@ __all__ = [
     'LongRunningFunctionTool',
     'preload_memory',
     'ToolContext',
-    'ToolboxToolset',
     'transfer_to_agent',
 ]
 
@@ -17056,6 +17064,82 @@ def from_function_with_options(
       )
   )
   return declaration
+
+
+
+================================================
+FILE: src/google/adk/tools/_built_in_code_execution_tool.py
+================================================
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING
+
+from deprecated import deprecated
+from google.genai import types
+from typing_extensions import override
+
+from .base_tool import BaseTool
+from .tool_context import ToolContext
+
+if TYPE_CHECKING:
+  from ..models import LlmRequest
+
+logger = logging.getLogger('google_adk.' + __name__)
+
+
+@deprecated(
+    'No longer supported. Please use the new BuiltInCodeExecutor instead.'
+)
+class BuiltInCodeExecutionTool(BaseTool):
+  """A built-in code execution tool that is automatically invoked by Gemini 2 models.
+
+  This tool operates internally within the model and does not require or perform
+  local code execution.
+  """
+
+  def __init__(self):
+    # Name and description are not used because this is a model built-in tool.
+    super().__init__(name='code_execution', description='code_execution')
+
+  @override
+  async def process_llm_request(
+      self,
+      *,
+      tool_context: ToolContext,
+      llm_request: LlmRequest,
+  ) -> None:
+    logger.warning(
+        'BuiltInCodeExecutionTool is deprecated and will be removed in 1.1.0.'
+        ' Please use the new BuiltInCodeExecutor instead.'
+    )
+    if llm_request.model and llm_request.model.startswith('gemini-2'):
+      llm_request.config = llm_request.config or types.GenerateContentConfig()
+      llm_request.config.tools = llm_request.config.tools or []
+      llm_request.config.tools.append(
+          types.Tool(code_execution=types.ToolCodeExecution())
+      )
+    else:
+      raise ValueError(
+          f'Code execution tool is not supported for model {llm_request.model}'
+      )
+
+
+built_in_code_execution = BuiltInCodeExecutionTool()
 
 
 
@@ -17490,82 +17574,6 @@ class BaseToolset(ABC):
     should ensure that any open connections, files, or other managed
     resources are properly released to prevent leaks.
     """
-
-
-
-================================================
-FILE: src/google/adk/tools/built_in_code_execution_tool.py
-================================================
-# Copyright 2025 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-from __future__ import annotations
-
-import logging
-from typing import TYPE_CHECKING
-
-from deprecated import deprecated
-from google.genai import types
-from typing_extensions import override
-
-from .base_tool import BaseTool
-from .tool_context import ToolContext
-
-if TYPE_CHECKING:
-  from ..models import LlmRequest
-
-logger = logging.getLogger('google_adk.' + __name__)
-
-
-@deprecated(
-    'No longer supported. Please use the new BuiltInCodeExecutor instead.'
-)
-class BuiltInCodeExecutionTool(BaseTool):
-  """A built-in code execution tool that is automatically invoked by Gemini 2 models.
-
-  This tool operates internally within the model and does not require or perform
-  local code execution.
-  """
-
-  def __init__(self):
-    # Name and description are not used because this is a model built-in tool.
-    super().__init__(name='code_execution', description='code_execution')
-
-  @override
-  async def process_llm_request(
-      self,
-      *,
-      tool_context: ToolContext,
-      llm_request: LlmRequest,
-  ) -> None:
-    logger.warning(
-        'BuiltInCodeExecutionTool is deprecated. Please use the new'
-        ' BuiltInCodeExecutor instead.'
-    )
-    if llm_request.model and llm_request.model.startswith('gemini-2'):
-      llm_request.config = llm_request.config or types.GenerateContentConfig()
-      llm_request.config.tools = llm_request.config.tools or []
-      llm_request.config.tools.append(
-          types.Tool(code_execution=types.ToolCodeExecution())
-      )
-    else:
-      raise ValueError(
-          f'Code execution tool is not supported for model {llm_request.model}'
-      )
-
-
-built_in_code_execution = BuiltInCodeExecutionTool()
 
 
 
@@ -18166,7 +18174,17 @@ class FunctionTool(BaseTool):
   """
 
   def __init__(self, func: Callable[..., Any]):
-    super().__init__(name=func.__name__, description=func.__doc__)
+    """Extract metadata from a callable object."""
+    if inspect.isfunction(func) or inspect.ismethod(func):
+      # Handle regular functions and methods
+      name = func.__name__
+      doc = func.__doc__ or ''
+    else:
+      # Handle objects with __call__ method
+      call_method = func.__call__
+      name = func.__class__.__name__
+      doc = call_method.__doc__ or func.__doc__ or ''
+    super().__init__(name=name, description=doc)
     self.func = func
 
   @override
@@ -18209,7 +18227,14 @@ class FunctionTool(BaseTool):
 You could retry calling this tool, but it is IMPORTANT for you to provide all the mandatory parameters."""
       return {'error': error_str}
 
-    if inspect.iscoroutinefunction(self.func):
+    # Functions are callable objects, but not all callable objects are functions
+    # checking coroutine function is not enough. We also need to check whether
+    # Callable's __call__ function is a coroutine funciton
+    if (
+        inspect.iscoroutinefunction(self.func)
+        or hasattr(self.func, '__call__')
+        and inspect.iscoroutinefunction(self.func.__call__)
+    ):
       return await self.func(**args_to_call) or {}
     else:
       return self.func(**args_to_call) or {}
@@ -18389,10 +18414,12 @@ FILE: src/google/adk/tools/langchain_tool.py
 # limitations under the License.
 
 from typing import Any
-from typing import Callable
+from typing import Optional
+from typing import Union
 
 from google.genai import types
-from pydantic import model_validator
+from langchain.agents import Tool
+from langchain_core.tools import BaseTool
 from typing_extensions import override
 
 from . import _automatic_function_calling_util
@@ -18400,66 +18427,111 @@ from .function_tool import FunctionTool
 
 
 class LangchainTool(FunctionTool):
-  """Use this class to wrap a langchain tool.
+  """Adapter class that wraps a Langchain tool for use with ADK.
 
-  If the original tool name and description are not suitable, you can override
-  them in the constructor.
+  This adapter converts Langchain tools into a format compatible with Google's
+  generative AI function calling interface. It preserves the tool's name,
+  description, and functionality while adapting its schema.
+
+  The original tool's name and description can be overridden if needed.
+
+  Args:
+      tool: A Langchain tool to wrap (BaseTool or a tool with a .run method)
+      name: Optional override for the tool's name
+      description: Optional override for the tool's description
+
+  Examples:
+      ```python
+      from langchain.tools import DuckDuckGoSearchTool
+      from google.genai.tools import LangchainTool
+
+      search_tool = DuckDuckGoSearchTool()
+      wrapped_tool = LangchainTool(search_tool)
+      ```
   """
 
-  tool: Any
+  _langchain_tool: Union[BaseTool, object]
   """The wrapped langchain tool."""
 
-  def __init__(self, tool: Any):
-    super().__init__(tool._run)
-    self.tool = tool
-    if tool.name:
-      self.name = tool.name
-    if tool.description:
-      self.description = tool.description
+  def __init__(
+      self,
+      tool: Union[BaseTool, object],
+      name: Optional[str] = None,
+      description: Optional[str] = None,
+  ):
+    # Check if the tool has a 'run' method
+    if not hasattr(tool, 'run') and not hasattr(tool, '_run'):
+      raise ValueError("Langchain tool must have a 'run' or '_run' method")
 
-  @model_validator(mode='before')
-  @classmethod
-  def populate_name(cls, data: Any) -> Any:
-    # Override this to not use function's signature name as it's
-    # mostly "run" or "invoke" for thir-party tools.
-    return data
+    # Determine which function to use
+    func = tool._run if hasattr(tool, '_run') else tool.run
+    super().__init__(func)
+
+    self._langchain_tool = tool
+
+    # Set name: priority is 1) explicitly provided name, 2) tool's name, 3) default
+    if name is not None:
+      self.name = name
+    elif hasattr(tool, 'name') and tool.name:
+      self.name = tool.name
+    # else: keep default from FunctionTool
+
+    # Set description: similar priority
+    if description is not None:
+      self.description = description
+    elif hasattr(tool, 'description') and tool.description:
+      self.description = tool.description
+    # else: keep default from FunctionTool
 
   @override
   def _get_declaration(self) -> types.FunctionDeclaration:
-    """Build the function declaration for the tool."""
-    from langchain.agents import Tool
-    from langchain_core.tools import BaseTool
+    """Build the function declaration for the tool.
 
-    # There are two types of tools:
-    # 1. BaseTool: the tool is defined in langchain.tools.
-    # 2. Other tools: the tool doesn't inherit any class but follow some
-    #    conventions, like having a "run" method.
-    if isinstance(self.tool, BaseTool):
-      tool_wrapper = Tool(
-          name=self.name,
-          func=self.func,
-          description=self.description,
-      )
-      if self.tool.args_schema:
-        tool_wrapper.args_schema = self.tool.args_schema
-      function_declaration = _automatic_function_calling_util.build_function_declaration_for_langchain(
-          False,
-          self.name,
-          self.description,
-          tool_wrapper.func,
-          tool_wrapper.args,
-      )
-      return function_declaration
-    else:
+    Returns:
+        A FunctionDeclaration object that describes the tool's interface.
+
+    Raises:
+        ValueError: If the tool schema cannot be correctly parsed.
+    """
+    try:
+      # There are two types of tools:
+      # 1. BaseTool: the tool is defined in langchain_core.tools.
+      # 2. Other tools: the tool doesn't inherit any class but follow some
+      #    conventions, like having a "run" method.
+      # Handle BaseTool type (preferred Langchain approach)
+      if isinstance(self._langchain_tool, BaseTool):
+        tool_wrapper = Tool(
+            name=self.name,
+            func=self.func,
+            description=self.description,
+        )
+
+        # Add schema if available
+        if (
+            hasattr(self._langchain_tool, 'args_schema')
+            and self._langchain_tool.args_schema
+        ):
+          tool_wrapper.args_schema = self._langchain_tool.args_schema
+
+        return _automatic_function_calling_util.build_function_declaration_for_langchain(
+            False,
+            self.name,
+            self.description,
+            tool_wrapper.func,
+            getattr(tool_wrapper, 'args', None),
+        )
+
       # Need to provide a way to override the function names and descriptions
       # as the original function names are mostly ".run" and the descriptions
-      # may not meet users' needs.
-      function_declaration = (
-          _automatic_function_calling_util.build_function_declaration(
-              func=self.tool.run,
-          )
+      # may not meet users' needs
+      return _automatic_function_calling_util.build_function_declaration(
+          func=self._langchain_tool.run,
       )
-      return function_declaration
+
+    except Exception as e:
+      raise ValueError(
+          f'Failed to build function declaration for Langchain tool: {e}'
+      ) from e
 
 
 
@@ -18972,8 +19044,12 @@ FILE: src/google/adk/tools/toolbox_toolset.py
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Any
+from typing import Callable
 from typing import List
+from typing import Mapping
 from typing import Optional
+from typing import Union
 
 import toolbox_core as toolbox
 from typing_extensions import override
@@ -19000,12 +19076,22 @@ class ToolboxToolset(BaseToolset):
       server_url: str,
       toolset_name: Optional[str] = None,
       tool_names: Optional[List[str]] = None,
+      auth_token_getters: dict[str, Callable[[], str]] = {},
+      bound_params: Mapping[str, Union[Callable[[], Any], Any]] = {},
   ):
     """Args:
 
       server_url: The URL of the toolbox server.
       toolset_name: The name of the toolbox toolset to load.
       tool_names: The names of the tools to load.
+      auth_token_getters: A mapping of authentication service names to
+        callables that return the corresponding authentication token. see:
+        https://github.com/googleapis/mcp-toolbox-sdk-python/tree/main/packages/toolbox-core#authenticating-tools
+        for details.
+      bound_params: A mapping of parameter names to bind to specific values or
+        callables that are called to produce values as needed. see:
+        https://github.com/googleapis/mcp-toolbox-sdk-python/tree/main/packages/toolbox-core#binding-parameter-values
+        for details.
     The resulting ToolboxToolset will contain both tools loaded by tool_names
     and toolset_name.
     """
@@ -19013,9 +19099,11 @@ class ToolboxToolset(BaseToolset):
       raise ValueError("tool_names and toolset_name cannot both be None")
     super().__init__()
     self._server_url = server_url
-    self._toolbox_client = toolbox.ToolboxSyncClient(server_url)
+    self._toolbox_client = toolbox.ToolboxClient(server_url)
     self._toolset_name = toolset_name
     self._tool_names = tool_names
+    self._auth_token_getters = auth_token_getters
+    self._bound_params = bound_params
 
   @override
   async def get_tools(
@@ -19025,11 +19113,21 @@ class ToolboxToolset(BaseToolset):
     if self._toolset_name:
       tools.extend([
           FunctionTool(tool)
-          for tool in self._toolbox_client.load_toolset(self._toolset_name)
+          for tool in await self._toolbox_client.load_toolset(
+              self._toolset_name,
+              auth_token_getters=self._auth_token_getters,
+              bound_params=self._bound_params,
+          )
       ])
     if self._tool_names:
       tools.extend([
-          FunctionTool(self._toolbox_client.load_tool(tool_name))
+          FunctionTool(
+              await self._toolbox_client.load_tool(
+                  tool_name,
+                  auth_token_getters=self._auth_token_getters,
+                  bound_params=self._bound_params,
+              )
+          )
           for tool_name in self._tool_names
       ])
     return tools
@@ -21115,6 +21213,9 @@ class ConnectionsClient:
             "query": {"$ref": "#/components/schemas/query"},
             "timeout": {"$ref": "#/components/schemas/timeout"},
             "pageSize": {"$ref": "#/components/schemas/pageSize"},
+            "dynamicAuthConfig": {
+                "$ref": "#/components/schemas/dynamicAuthConfig"
+            },
         },
     }
 
@@ -21543,6 +21644,23 @@ FILE: src/google/adk/tools/google_api_tool/__init__.py
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Auto-generated tools and toolsets for Google APIs.
+
+These tools and toolsets are auto-generated based on the API specifications
+provided by the Google API Discovery API.
+"""
+
+from .google_api_tool import GoogleApiTool
+from .google_api_toolset import GoogleApiToolset
+from .google_api_toolsets import BigQueryToolset
+from .google_api_toolsets import CalendarToolset
+from .google_api_toolsets import DocsToolset
+from .google_api_toolsets import GmailToolset
+from .google_api_toolsets import SheetsToolset
+from .google_api_toolsets import SlidesToolset
+from .google_api_toolsets import YoutubeToolset
+
 __all__ = [
     'BigQueryToolset',
     'CalendarToolset',
@@ -21554,17 +21672,6 @@ __all__ = [
     'GoogleApiToolset',
     'GoogleApiTool',
 ]
-
-
-from .google_api_tool import GoogleApiTool
-from .google_api_toolset import GoogleApiToolset
-from .google_api_toolsets import BigQueryToolset
-from .google_api_toolsets import CalendarToolset
-from .google_api_toolsets import DocsToolset
-from .google_api_toolsets import GmailToolset
-from .google_api_toolsets import SheetsToolset
-from .google_api_toolsets import SlidesToolset
-from .google_api_toolsets import YoutubeToolset
 
 
 
@@ -21802,6 +21909,7 @@ logger = logging.getLogger("google_adk." + __name__)
 
 
 class BigQueryToolset(GoogleApiToolset):
+  """Auto-generated Bigquery toolset based on Google BigQuery API v2 spec exposed by Google API discovery API"""
 
   def __init__(
       self,
@@ -21813,6 +21921,7 @@ class BigQueryToolset(GoogleApiToolset):
 
 
 class CalendarToolset(GoogleApiToolset):
+  """Auto-generated Calendar toolset based on Google Calendar API v3 spec exposed by Google API discovery API"""
 
   def __init__(
       self,
@@ -21824,6 +21933,7 @@ class CalendarToolset(GoogleApiToolset):
 
 
 class GmailToolset(GoogleApiToolset):
+  """Auto-generated Gmail toolset based on Google Gmail API v1 spec exposed by Google API discovery API"""
 
   def __init__(
       self,
@@ -21835,6 +21945,7 @@ class GmailToolset(GoogleApiToolset):
 
 
 class YoutubeToolset(GoogleApiToolset):
+  """Auto-generated Youtube toolset based on Youtube API v3 spec exposed by Google API discovery API"""
 
   def __init__(
       self,
@@ -21846,6 +21957,7 @@ class YoutubeToolset(GoogleApiToolset):
 
 
 class SlidesToolset(GoogleApiToolset):
+  """Auto-generated Slides toolset based on Google Slides API v1 spec exposed by Google API discovery API"""
 
   def __init__(
       self,
@@ -21857,6 +21969,7 @@ class SlidesToolset(GoogleApiToolset):
 
 
 class SheetsToolset(GoogleApiToolset):
+  """Auto-generated Sheets toolset based on Google Sheets API v4 spec exposed by Google API discovery API"""
 
   def __init__(
       self,
@@ -21868,6 +21981,7 @@ class SheetsToolset(GoogleApiToolset):
 
 
 class DocsToolset(GoogleApiToolset):
+  """Auto-generated Docs toolset based on Google Docs API v1 spec exposed by Google API discovery API"""
 
   def __init__(
       self,
@@ -22795,7 +22909,7 @@ class MCPSessionManager:
       connection_params: StdioServerParameters | SseServerParams,
       exit_stack: AsyncExitStack,
       errlog: TextIO = sys.stderr,
-  ) -> ClientSession:
+  ):
     """Initializes the MCP session manager.
 
     Example usage:
