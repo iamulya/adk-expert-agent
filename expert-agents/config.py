@@ -15,6 +15,8 @@ GCS_PROJECT_ID_FOR_BUCKET = os.getenv("GCS_PROJECT_ID_FOR_DOCS_BUCKET") # Projec
 GCS_SIGNED_URL_SA_EMAIL = os.getenv("GCS_SIGNED_URL_SA_EMAIL") # SA to impersonate for signing URLs
 SIGNED_URL_EXPIRATION_SECONDS = int(os.getenv("SIGNED_URL_EXPIRATION_SECONDS", "3600")) # Default 1 hour
 
+MERMAID_CLI_PATH = os.getenv("MERMAID_CLI_PATH", "mmdc")
+
 def get_gemini_api_key_from_secret_manager() -> str:
     global _GEMINI_API_KEY
     if _GEMINI_API_KEY:

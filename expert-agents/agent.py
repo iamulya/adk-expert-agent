@@ -9,7 +9,7 @@ from typing import Any, Dict, Literal, Optional, override
 
 from google.adk.agents.readonly_context import ReadonlyContext
 from google.adk.agents.callback_context import CallbackContext
-from google.adk.agents import Agent as ADKAgent
+from google.adk.agents import Agent as ADKAgent # Renamed to avoid conflict
 from google.adk.models import Gemini
 from google.adk.tools.agent_tool import AgentTool
 from google.adk.tools.base_tool import BaseTool
@@ -20,10 +20,11 @@ from pydantic import BaseModel, Field, ValidationError
 
 
 from .context_loader import get_escaped_adk_context_for_llm
-from .config import DEFAULT_MODEL_NAME
+from .config import DEFAULT_MODEL_NAME, PRO_MODEL_NAME
 from .callbacks import log_prompt_before_model_call
 from .sequential_issue_processor import github_issue_processing_agent, GitHubIssueProcessingInput, SequentialProcessorFinalOutput
 from .document_generator_agent import document_generator_agent, DocumentGeneratorAgentToolInput
+from .mermaid_tool import mermaid_gcs_tool_instance # Import the new tool
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -33,6 +34,99 @@ def get_text_from_content(content: genai_types.Content) -> str:
         return content.parts[0].text
     return ""
 
+# --- Pydantic Models for Agent Tools ---
+class DiagramGeneratorAgentToolInput(BaseModel):
+    diagram_query: str = Field(description="The user's query describing the architecture diagram to be generated.")
+
+class MermaidSyntaxVerifierAgentToolInput(BaseModel):
+    mermaid_syntax: str = Field(description="The Mermaid syntax to verify and correct.")
+
+
+# --- New Mermaid-related Agents ---
+mermaid_syntax_verifier_agent = ADKAgent(
+    name="mermaid_syntax_verifier_agent",
+    model=Gemini(model=DEFAULT_MODEL_NAME),
+    instruction=(
+        "You are an expert in Mermaid diagram syntax. "
+        "Your sole responsibility is to receive Mermaid syntax, verify its correctness, "
+        "and correct any syntax errors. "
+        "If the provided syntax is already correct, return it as is. "
+        "If there are errors, return the corrected Mermaid syntax. "
+        "Your output MUST ONLY be the Mermaid code block itself (e.g., ```mermaid\\n...\\n```). "
+        "Do not add any other explanations, greetings, or conversational text."
+    ),
+    description="Verifies and corrects Mermaid diagram syntax. Expects input as a JSON string with a 'mermaid_syntax' key.",
+    input_schema=MermaidSyntaxVerifierAgentToolInput, # Schema for when this agent is called as a tool
+    disallow_transfer_to_parent=True, # This agent is a specialist
+    disallow_transfer_to_peers=True,
+    generate_content_config=genai_types.GenerateContentConfig(temperature=0.0)
+)
+
+def diagram_generator_agent_instruction_provider(context: ReadonlyContext) -> str:
+    invocation_ctx = getattr(context, '_invocation_context', None)
+    user_diagram_query = ""
+    if invocation_ctx and hasattr(invocation_ctx, 'user_content') and invocation_ctx.user_content:
+        if invocation_ctx.user_content.parts and invocation_ctx.user_content.parts[0].text:
+            try:
+                # This agent expects its input (when called as a tool) to be a JSON string
+                # conforming to DiagramGeneratorAgentToolInput.
+                input_data = DiagramGeneratorAgentToolInput.model_validate_json(invocation_ctx.user_content.parts[0].text)
+                user_diagram_query = input_data.diagram_query
+            except (ValidationError, json.JSONDecodeError) as e:
+                logger.error(f"DiagramGeneratorAgent: Error parsing input: {e}. Raw input: {invocation_ctx.user_content.parts[0].text[:100]}")
+                return "Error: Could not understand the diagram request. Please provide a clear query for the diagram."
+    
+    if not user_diagram_query:
+        return "Error: No diagram query provided. Please specify what kind of diagram you need."
+
+    adk_context_for_llm = get_escaped_adk_context_for_llm()
+    
+    instruction = f"""
+You are an AI assistant that generates architecture diagrams in Mermaid syntax. You have access to the ADK (Agent Development Kit) knowledge context.
+
+ADK Knowledge Context:
+--- START OF ADK CONTEXT ---
+{adk_context_for_llm}
+--- END OF ADK CONTEXT ---
+
+The user's request for the diagram is: "{user_diagram_query}"
+
+Follow these steps precisely:
+1.  Based on the user's request ("{user_diagram_query}") and the ADK Knowledge Context, generate the Mermaid syntax for the diagram.
+    The Mermaid syntax MUST be enclosed in a standard Mermaid code block, like so:
+    ```mermaid
+    graph TD
+        A --> B
+    ```
+2.  After generating the initial Mermaid syntax, you MUST call the '{mermaid_syntax_verifier_agent.name}' tool.
+    The input to this tool MUST be a JSON object with a single key "mermaid_syntax", where the value is the Mermaid syntax you just generated (including the ```mermaid ... ``` block).
+    Example call: {{"mermaid_syntax": "```mermaid\\ngraph TD; A-->B;\\n```"}}
+3.  The '{mermaid_syntax_verifier_agent.name}' tool will return the verified (and potentially corrected) Mermaid syntax.
+    This response will also be a JSON object, and you need to extract the value of the "mermaid_syntax" key from its "result" field.
+4.  Once you have the final, verified Mermaid syntax, you MUST call the '{mermaid_gcs_tool_instance.name}' tool.
+    The input to this tool MUST be a JSON object with a single key "mermaid_syntax", where the value is the final verified Mermaid syntax (including the ```mermaid ... ``` block).
+5.  Your final response for this turn MUST ONLY be the result from the '{mermaid_gcs_tool_instance.name}' tool (which will be a GCS signed URL or an error message).
+    Do not add any conversational fluff, explanations, or greetings around this final URL.
+"""
+    return instruction
+
+diagram_generator_agent = ADKAgent(
+    name="mermaid_diagram_orchestrator_agent",
+    model=Gemini(model=PRO_MODEL_NAME),
+    instruction=diagram_generator_agent_instruction_provider,
+    tools=[
+        AgentTool(agent=mermaid_syntax_verifier_agent),
+        mermaid_gcs_tool_instance,
+    ],
+    input_schema=DiagramGeneratorAgentToolInput, # Schema for when this agent is called as a tool
+    disallow_transfer_to_parent=True, # This agent is a specialist
+    disallow_transfer_to_peers=True,
+    before_model_callback=log_prompt_before_model_call,
+    generate_content_config=genai_types.GenerateContentConfig(temperature=0.1, top_p=0.7)
+)
+
+
+# --- Existing Root Agent Logic (Modified) ---
 class PrepareDocumentContentToolInput(BaseModel):
     markdown_content: str = Field(description="The generated Markdown content for the document.")
     document_type: Literal["pdf", "html", "pptx"] = Field(description="The type of document requested by the user (pdf, html, or pptx).")
@@ -45,7 +139,7 @@ async def root_agent_after_tool_callback(
     args: dict,
     tool_context: ToolContext,
     tool_response: Any
-) -> Optional[Any]: # Changed return type to Any to allow dict return
+) -> Optional[Any]:
 
     if tool.name == github_issue_processing_agent.name:
         logger.info(f"RootAgent (after_tool_callback): Processing response from '{github_issue_processing_agent.name}'.")
@@ -71,28 +165,28 @@ async def root_agent_after_tool_callback(
 
     elif tool.name == document_generator_agent.name:
         logger.info(f"RootAgent (after_tool_callback): Received response from '{document_generator_agent.name}': {str(tool_response)[:200]}")
-        # The response from document_generator_agent is already a string (URL or error message)
+        return genai_types.Content(parts=[genai_types.Part(text=str(tool_response))])
+
+    elif tool.name == diagram_generator_agent.name: # Handle new diagram agent
+        logger.info(f"RootAgent (after_tool_callback): Received response from '{diagram_generator_agent.name}': {str(tool_response)[:200]}")
+        # The response from diagram_generator_agent is the signed URL or an error message
         return genai_types.Content(parts=[genai_types.Part(text=str(tool_response))])
 
     elif tool.name == "prepare_document_content_tool":
         logger.info(f"RootAgent (after_tool_callback): 'prepare_document_content_tool' completed. Output from tool: {str(tool_response)[:200]}")
-        # tool_response is the dict from PrepareDocumentContentTool.run_async.
-        # This dict will be part of the FunctionResponse event for prepare_document_content_tool.
-        # The root_agent_instruction_provider will see this event and instruct the LLM
-        # to call the document_generator_agent in the next turn.
-        tool_context.actions.skip_summarization = False # LLM needs to see this result to act upon it.
-        return tool_response # Return the dictionary directly. ADK will wrap it in a FunctionResponse.
+        tool_context.actions.skip_summarization = False
+        return tool_response
 
     logger.warning(f"RootAgent (after_tool_callback): Callback for unhandled tool: {tool.name}")
-    return None # Default: let ADK handle tool_response
+    return None
 
 
 def root_agent_instruction_provider(context: ReadonlyContext) -> str:
     adk_context_for_llm = get_escaped_adk_context_for_llm()
-    invocation_ctx = getattr(context, '_invocation_context', None) # Use getattr for safety
+    invocation_ctx = getattr(context, '_invocation_context', None)
     user_query_text = get_text_from_content(invocation_ctx.user_content) if invocation_ctx and invocation_ctx.user_content else ""
     
-    # Check if the last event is a response from prepare_document_content_tool
+    # Check for document generation from prepare_document_content_tool response
     if invocation_ctx and invocation_ctx.session and invocation_ctx.session.events:
         last_event = invocation_ctx.session.events[-1]
         if last_event.author == root_agent.name and \
@@ -101,10 +195,8 @@ def root_agent_instruction_provider(context: ReadonlyContext) -> str:
            last_event.content.parts[0].function_response.name == "prepare_document_content_tool":
             
             logger.info("RootAgent (instruction_provider): Detected response from prepare_document_content_tool. Instructing to call document_generator_agent.")
-            
             tool_output_data_container = last_event.content.parts[0].function_response.response
             
-            # ADK wraps the direct dict return from a tool/callback in {"result": <dict>}
             if "result" in tool_output_data_container and isinstance(tool_output_data_container["result"], dict):
                 prepared_content_data = tool_output_data_container["result"]
             else:
@@ -112,35 +204,27 @@ def root_agent_instruction_provider(context: ReadonlyContext) -> str:
                 logger.warning(f"RootAgent (instruction_provider): Assuming direct data from prepare_document_content_tool response, no 'result' wrapper found. Data: {str(prepared_content_data)[:100]}")
 
             try:
-                # Validate that prepared_content_data has the fields of PrepareDocumentContentToolInput
                 validated_content_for_doc_gen = PrepareDocumentContentToolInput.model_validate(prepared_content_data)
-
                 doc_gen_agent_actual_input = DocumentGeneratorAgentToolInput(
                     markdown_content=validated_content_for_doc_gen.markdown_content,
                     document_type=validated_content_for_doc_gen.document_type,
                     output_filename=validated_content_for_doc_gen.output_filename_base
                 )
-                # The LLM needs to make a FunctionCall with these args.
-                # The AgentTool (document_generator_agent) expects its input_schema.
-                
                 system_instruction = f"""
 You have received structured data from the 'prepare_document_content_tool'.
 The data is: {json.dumps(prepared_content_data)}
-
 Your task is to call the tool named '{document_generator_agent.name}'.
 This tool expects arguments conforming to this schema:
 {DocumentGeneratorAgentToolInput.model_json_schema(indent=2)}
-
-Based on the data received from 'prepare_document_content_tool' (specifically 'markdown_content', 'document_type', and 'output_filename_base' which you should use as 'output_filename' for the call), you MUST call the '{document_generator_agent.name}' tool with the correctly mapped arguments.
-Your response should ONLY be the function call. Do not include any other text, greetings, or explanations.
+Based on the data received from 'prepare_document_content_tool', you MUST call the '{document_generator_agent.name}' tool with the correctly mapped arguments.
+Your response should ONLY be the function call. Do not include any other text.
 """
                 return system_instruction
-
             except (ValidationError, Exception) as e:
                 logger.error(f"RootAgent (instruction_provider): Error processing data from prepare_document_content_tool for doc gen: {e}. Data: {str(prepared_content_data)[:200]}", exc_info=True)
                 return "Error: Could not process the data from the content preparation step. Please try rephrasing your request."
 
-    # Original logic for issue detection, initial doc request, etc.
+    # GitHub Issue Detection
     patterns = [
         re.compile(r"(?:issue|ticket|bug|fix|feature|problem|error)\s*(?:number|num|report)?\s*(?:#)?\s*(\d+)(?:\s*(?:on|for|in|related to)\s*google/adk-python)?", re.IGNORECASE),
         re.compile(r"google/adk-python\s*(?:issue|ticket|bug|fix|feature|problem|error)\s*(?:number|num|report)?\s*(?:#)?\s*(\d+)", re.IGNORECASE),
@@ -160,46 +244,46 @@ Your response should ONLY be the function call. Do not include any other text, g
     is_github_keywords_present = "github" in user_query_text.lower() or \
                                  any(kw in user_query_text.lower() for kw in ["issue", "bug", "ticket", "feature"])
 
+    # Document Generation Request Detection (Initial)
     doc_gen_keywords_pdf = ["pdf", "document", "report"]
     doc_gen_keywords_slides = ["slides", "presentation", "deck", "pptx", "powerpoint", "html slides"]
-    
     requested_doc_type = None
     if any(kw in user_query_text.lower() for kw in doc_gen_keywords_pdf):
         requested_doc_type = "pdf"
     elif any(kw in user_query_text.lower() for kw in doc_gen_keywords_slides):
-        if "pptx" in user_query_text.lower() or "powerpoint" in user_query_text.lower():
-            requested_doc_type = "pptx"
-        else:
-            requested_doc_type = "html"
+        requested_doc_type = "pptx" if "pptx" in user_query_text.lower() or "powerpoint" in user_query_text.lower() else "html"
 
-    if requested_doc_type: # This is for the *initial* request
+    # Architecture Diagram Request Detection
+    diagram_keywords = ["diagram", "architecture", "visualize", "mermaid"]
+    is_diagram_request = any(kw in user_query_text.lower() for kw in diagram_keywords)
+
+    if is_diagram_request:
+        logger.info(f"RootAgent (instruction_provider): Detected architecture diagram request: '{user_query_text}'")
+        diagram_agent_input_payload = DiagramGeneratorAgentToolInput(diagram_query=user_query_text).model_dump_json()
+        system_instruction = f"""
+You are an expert orchestrator for Google's Agent Development Kit (ADK).
+The user is asking for an architecture diagram. Their query is: "{user_query_text}"
+Your task is to call the '{diagram_generator_agent.name}' tool.
+The tool expects its input as a JSON string. The value for the "request" argument MUST be the following JSON string:
+{diagram_agent_input_payload}
+This is your only action for this turn. Output only the tool call.
+"""
+    elif requested_doc_type:
         logger.info(f"RootAgent (instruction_provider): Detected document generation request for type '{requested_doc_type}'. Query: '{user_query_text}'")
         system_instruction = f"""
 You are an expert on Google's Agent Development Kit (ADK) version 1.0.0 and a document content creator.
 You have access to a tool called 'prepare_document_content_tool'.
-This tool is used to gather the necessary Markdown content, the type of document, and a base filename before actual document generation.
-You also have extensive ADK knowledge from the context below.
-
 ADK Knowledge Context:
 --- START OF ADK CONTEXT ---
 {adk_context_for_llm}
 --- END OF ADK CONTEXT ---
-
-The user wants you to generate a document of type '{requested_doc_type}'.
-Their request is: "{user_query_text}"
-
+The user wants you to generate a document of type '{requested_doc_type}'. Their request is: "{user_query_text}"
 Your tasks are:
 1.  Analyze the user's request: "{user_query_text}".
-2.  Using the ADK Knowledge Context, generate comprehensive and well-structured Markdown content suitable for `marp-cli` that directly addresses the user's request.
-3.  Determine a suitable base filename for this document (e.g., if the user asks for "a report on ADK tools", a good base filename could be "adk_tools_report"). This filename should NOT include an extension.
-4.  You MUST call the tool named 'prepare_document_content_tool'.
-    The arguments for this tool MUST be a JSON object with the following keys:
-    -   "markdown_content": (string) Your generated Markdown text.
-    -   "document_type": (string) The value MUST be "{requested_doc_type}".
-    -   "output_filename_base": (string) Your determined base filename.
-    -   "original_user_query": (string) The exact text of the user's request: "{user_query_text}".
-
-Your response should ONLY be the function call to 'prepare_document_content_tool'. Do not include any other text, greetings, or explanations.
+2.  Using the ADK Knowledge Context, generate comprehensive Markdown content for `marp-cli`.
+3.  Determine a suitable base filename (e.g., "adk_overview").
+4.  You MUST call 'prepare_document_content_tool' with "markdown_content", "document_type" ("{requested_doc_type}"), "output_filename_base", and "original_user_query".
+Your response should ONLY be the function call.
 """
     elif extracted_issue_number:
         logger.info(f"RootAgent (instruction_provider): Found issue number '{extracted_issue_number}'. Instructing to call GitHubIssueProcessingSequentialAgent.")
@@ -211,8 +295,7 @@ Your task is to call the '{github_issue_processing_agent.name}' tool.
 The tool expects a single argument named "request".
 The value for the "request" argument MUST be the following JSON string:
 {sequential_agent_input_payload_str}
-Ensure the value you provide for the "request" key is precisely this JSON string.
-This is your only action for this turn. Output only the tool call.
+Output only the tool call.
 """
     elif is_github_keywords_present:
         logger.info("RootAgent (instruction_provider): GitHub keywords present, but no issue number. Asking.")
@@ -247,22 +330,21 @@ class PrepareDocumentContentTool(BaseTool):
             parameters=PrepareDocumentContentToolInput.model_json_schema()
         )
 
-    async def run_async(self, args: Dict[str, Any], tool_context: ToolContext) -> Dict[str, Any]:
+    async def run_async(self, args: Dict[str, Any], tool_context: ToolContext) -> Dict[str, Any]: 
         logger.info(f"PrepareDocumentContentTool 'run_async' called with args: {str(args)[:200]}. Returning these args directly.")
         try:
             validated_args = PrepareDocumentContentToolInput.model_validate(args)
             return validated_args.model_dump() 
         except ValidationError as ve:
             logger.error(f"PrepareDocumentContentTool: LLM provided invalid arguments: {ve}. Args: {args}", exc_info=True)
-            # Return a dict that includes an error, so the LLM can see it.
-            # The instruction provider for root_agent might need to handle this error response.
             return {"error": f"Invalid arguments from LLM for content preparation: {str(ve)}", "original_args": args}
 
 
 root_agent_tools = [
     AgentTool(agent=github_issue_processing_agent),
-    AgentTool(agent=document_generator_agent), 
-    PrepareDocumentContentTool(), 
+    AgentTool(agent=document_generator_agent),
+    AgentTool(agent=diagram_generator_agent), # Add the new diagram agent tool
+    PrepareDocumentContentTool(),
 ]
 
 root_agent = ADKAgent(
@@ -270,11 +352,11 @@ root_agent = ADKAgent(
     model=Gemini(model=DEFAULT_MODEL_NAME),
     instruction=root_agent_instruction_provider,
     tools=root_agent_tools,
-   # before_model_callback=log_prompt_before_model_call,
+    before_model_callback=log_prompt_before_model_call, # Re-enabled for debugging
     after_tool_callback=root_agent_after_tool_callback,
     generate_content_config=genai_types.GenerateContentConfig(
-        temperature=0.0,
-        max_output_tokens=60000, 
+        temperature=0.0, # Keep low for orchestration
+        max_output_tokens=60000, # Increased slightly for potentially larger tool calls
         top_p=0.6,
     )
 )
