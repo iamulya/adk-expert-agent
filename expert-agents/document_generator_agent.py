@@ -16,7 +16,7 @@ from .tools import (
     generate_html_slides_from_markdown_with_gcs,
     generate_pptx_slides_from_markdown_with_gcs
 )
-from .config import DEFAULT_MODEL_NAME
+from .config import DEFAULT_MODEL_NAME, PRO_MODEL_NAME
 from .callbacks import log_prompt_before_model_call
 
 logger = logging.getLogger(__name__)
@@ -94,7 +94,7 @@ def document_generator_instruction_provider(context: ReadonlyContext) -> str:
 
 document_generator_agent = LlmAgent(
     name="document_creation_specialist_agent",
-    model=Gemini(model=DEFAULT_MODEL_NAME),
+    model=Gemini(model=PRO_MODEL_NAME),
     instruction=document_generator_instruction_provider,
     tools=[
         _marp_pdf_tool_gcs,

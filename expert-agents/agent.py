@@ -33,8 +33,6 @@ def get_text_from_content(content: genai_types.Content) -> str:
         return content.parts[0].text
     return ""
 
-# Pydantic model for the input to the 'prepare_document_content_tool'
-# This is what the root_agent's LLM will be instructed to provide as arguments
 class PrepareDocumentContentToolInput(BaseModel):
     markdown_content: str = Field(description="The generated Markdown content for the document.")
     document_type: Literal["pdf", "html", "pptx"] = Field(description="The type of document requested by the user (pdf, html, or pptx).")
@@ -47,7 +45,7 @@ async def root_agent_after_tool_callback(
     args: dict,
     tool_context: ToolContext,
     tool_response: Any
-) -> Optional[genai_types.Content]:
+) -> Optional[Any]: # Changed return type to Any to allow dict return
 
     if tool.name == github_issue_processing_agent.name:
         logger.info(f"RootAgent (after_tool_callback): Processing response from '{github_issue_processing_agent.name}'.")
@@ -73,45 +71,76 @@ async def root_agent_after_tool_callback(
 
     elif tool.name == document_generator_agent.name:
         logger.info(f"RootAgent (after_tool_callback): Received response from '{document_generator_agent.name}': {str(tool_response)[:200]}")
+        # The response from document_generator_agent is already a string (URL or error message)
         return genai_types.Content(parts=[genai_types.Part(text=str(tool_response))])
 
     elif tool.name == "prepare_document_content_tool":
-        # 'tool_response' here IS the dictionary of arguments that the LLM provided
-        # when it CALLED 'prepare_document_content_tool'.
-        logger.info(f"RootAgent (after_tool_callback): 'prepare_document_content_tool' was called by LLM. Output from tool: {str(tool_response)[:200]}")
-        try:
-            # Validate that the LLM provided the correct arguments to our internal tool
-            validated_prepared_content = PrepareDocumentContentToolInput.model_validate(tool_response)
-
-            # Prepare the input for the actual document_generator_agent (AgentTool)
-            doc_gen_agent_actual_input = DocumentGeneratorAgentToolInput(
-                markdown_content=validated_prepared_content.markdown_content,
-                document_type=validated_prepared_content.document_type,
-                output_filename=validated_prepared_content.output_filename_base # Specialist agent expects 'output_filename'
-            )
-
-            function_call_to_doc_gen_agent = genai_types.FunctionCall(
-                name=document_generator_agent.name,
-                args=doc_gen_agent_actual_input.model_dump()
-            )
-            logger.info(f"RootAgent (after_tool_callback): Preparing to call '{document_generator_agent.name}' (AgentTool) with args: {doc_gen_agent_actual_input.model_dump_json()[:200]}")
-            
-            tool_context.actions.skip_summarization = True
-            return genai_types.Content(parts=[genai_types.Part(function_call=function_call_to_doc_gen_agent)])
-
-        except (ValidationError, ValueError) as e:
-            logger.error(f"RootAgent: Error validating/processing LLM's arguments from 'prepare_document_content_tool': {e}. LLM output (tool_response): {str(tool_response)}", exc_info=True)
-            return genai_types.Content(parts=[genai_types.Part(text=f"Error: Could not process the prepared document content: {e}")])
+        logger.info(f"RootAgent (after_tool_callback): 'prepare_document_content_tool' completed. Output from tool: {str(tool_response)[:200]}")
+        # tool_response is the dict from PrepareDocumentContentTool.run_async.
+        # This dict will be part of the FunctionResponse event for prepare_document_content_tool.
+        # The root_agent_instruction_provider will see this event and instruct the LLM
+        # to call the document_generator_agent in the next turn.
+        tool_context.actions.skip_summarization = False # LLM needs to see this result to act upon it.
+        return tool_response # Return the dictionary directly. ADK will wrap it in a FunctionResponse.
 
     logger.warning(f"RootAgent (after_tool_callback): Callback for unhandled tool: {tool.name}")
-    return None
+    return None # Default: let ADK handle tool_response
 
 
 def root_agent_instruction_provider(context: ReadonlyContext) -> str:
     adk_context_for_llm = get_escaped_adk_context_for_llm()
-    invocation_ctx = context._invocation_context if hasattr(context, '_invocation_context') else None
+    invocation_ctx = getattr(context, '_invocation_context', None) # Use getattr for safety
     user_query_text = get_text_from_content(invocation_ctx.user_content) if invocation_ctx and invocation_ctx.user_content else ""
+    
+    # Check if the last event is a response from prepare_document_content_tool
+    if invocation_ctx and invocation_ctx.session and invocation_ctx.session.events:
+        last_event = invocation_ctx.session.events[-1]
+        if last_event.author == root_agent.name and \
+           last_event.content and last_event.content.parts and \
+           last_event.content.parts[0].function_response and \
+           last_event.content.parts[0].function_response.name == "prepare_document_content_tool":
+            
+            logger.info("RootAgent (instruction_provider): Detected response from prepare_document_content_tool. Instructing to call document_generator_agent.")
+            
+            tool_output_data_container = last_event.content.parts[0].function_response.response
+            
+            # ADK wraps the direct dict return from a tool/callback in {"result": <dict>}
+            if "result" in tool_output_data_container and isinstance(tool_output_data_container["result"], dict):
+                prepared_content_data = tool_output_data_container["result"]
+            else:
+                prepared_content_data = tool_output_data_container
+                logger.warning(f"RootAgent (instruction_provider): Assuming direct data from prepare_document_content_tool response, no 'result' wrapper found. Data: {str(prepared_content_data)[:100]}")
 
+            try:
+                # Validate that prepared_content_data has the fields of PrepareDocumentContentToolInput
+                validated_content_for_doc_gen = PrepareDocumentContentToolInput.model_validate(prepared_content_data)
+
+                doc_gen_agent_actual_input = DocumentGeneratorAgentToolInput(
+                    markdown_content=validated_content_for_doc_gen.markdown_content,
+                    document_type=validated_content_for_doc_gen.document_type,
+                    output_filename=validated_content_for_doc_gen.output_filename_base
+                )
+                # The LLM needs to make a FunctionCall with these args.
+                # The AgentTool (document_generator_agent) expects its input_schema.
+                
+                system_instruction = f"""
+You have received structured data from the 'prepare_document_content_tool'.
+The data is: {json.dumps(prepared_content_data)}
+
+Your task is to call the tool named '{document_generator_agent.name}'.
+This tool expects arguments conforming to this schema:
+{DocumentGeneratorAgentToolInput.model_json_schema(indent=2)}
+
+Based on the data received from 'prepare_document_content_tool' (specifically 'markdown_content', 'document_type', and 'output_filename_base' which you should use as 'output_filename' for the call), you MUST call the '{document_generator_agent.name}' tool with the correctly mapped arguments.
+Your response should ONLY be the function call. Do not include any other text, greetings, or explanations.
+"""
+                return system_instruction
+
+            except (ValidationError, Exception) as e:
+                logger.error(f"RootAgent (instruction_provider): Error processing data from prepare_document_content_tool for doc gen: {e}. Data: {str(prepared_content_data)[:200]}", exc_info=True)
+                return "Error: Could not process the data from the content preparation step. Please try rephrasing your request."
+
+    # Original logic for issue detection, initial doc request, etc.
     patterns = [
         re.compile(r"(?:issue|ticket|bug|fix|feature|problem|error)\s*(?:number|num|report)?\s*(?:#)?\s*(\d+)(?:\s*(?:on|for|in|related to)\s*google/adk-python)?", re.IGNORECASE),
         re.compile(r"google/adk-python\s*(?:issue|ticket|bug|fix|feature|problem|error)\s*(?:number|num|report)?\s*(?:#)?\s*(\d+)", re.IGNORECASE),
@@ -143,10 +172,8 @@ def root_agent_instruction_provider(context: ReadonlyContext) -> str:
         else:
             requested_doc_type = "html"
 
-    if requested_doc_type:
+    if requested_doc_type: # This is for the *initial* request
         logger.info(f"RootAgent (instruction_provider): Detected document generation request for type '{requested_doc_type}'. Query: '{user_query_text}'")
-        
-        # Instruct the LLM to call 'prepare_document_content_tool'
         system_instruction = f"""
 You are an expert on Google's Agent Development Kit (ADK) version 1.0.0 and a document content creator.
 You have access to a tool called 'prepare_document_content_tool'.
@@ -205,20 +232,15 @@ ADK Knowledge Context (for general ADK questions):
 """
     return system_instruction
 
-# This tool is called BY THE ROOT AGENT'S LLM.
-# Its `run_async` method returns the structured data (markdown, doc_type, etc.)
-# which is then picked up by `root_agent_after_tool_callback` to make the *actual*
-# call to the `document_generator_agent` (which is an AgentTool).
 class PrepareDocumentContentTool(BaseTool):
     def __init__(self):
         super().__init__(
-            name="prepare_document_content_tool", # Renamed for clarity
+            name="prepare_document_content_tool", 
             description="Gathers generated markdown content, document type, and filename base. This tool is called by the orchestrator agent; its output triggers the actual document generation agent."
         )
 
     @override
     def _get_declaration(self):
-        # The schema for the arguments this tool expects from the LLM
         return genai_types.FunctionDeclaration(
             name=self.name,
             description=self.description,
@@ -232,13 +254,15 @@ class PrepareDocumentContentTool(BaseTool):
             return validated_args.model_dump() 
         except ValidationError as ve:
             logger.error(f"PrepareDocumentContentTool: LLM provided invalid arguments: {ve}. Args: {args}", exc_info=True)
+            # Return a dict that includes an error, so the LLM can see it.
+            # The instruction provider for root_agent might need to handle this error response.
             return {"error": f"Invalid arguments from LLM for content preparation: {str(ve)}", "original_args": args}
 
 
 root_agent_tools = [
     AgentTool(agent=github_issue_processing_agent),
     AgentTool(agent=document_generator_agent), 
-    PrepareDocumentContentTool(), # Changed from GenerateMarkdownForDocumentTool
+    PrepareDocumentContentTool(), 
 ]
 
 root_agent = ADKAgent(
@@ -246,7 +270,7 @@ root_agent = ADKAgent(
     model=Gemini(model=DEFAULT_MODEL_NAME),
     instruction=root_agent_instruction_provider,
     tools=root_agent_tools,
-    before_model_callback=log_prompt_before_model_call,
+   # before_model_callback=log_prompt_before_model_call,
     after_tool_callback=root_agent_after_tool_callback,
     generate_content_config=genai_types.GenerateContentConfig(
         temperature=0.0,
