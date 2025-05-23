@@ -44,7 +44,6 @@ export default function Main() {
           className="h-full w-full"
           responding={responding}
           onSend={handleSend}
-          onCancel={handleCancel}
         />
       </div>
     </div>

@@ -5,5 +5,5 @@ __pycache__/
 .DS_Store
 webui/node_modules/
 webui/.next/
-setup_webui.sh
+*.sh
 webui/package-lock.json

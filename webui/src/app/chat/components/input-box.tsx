@@ -9,6 +9,7 @@ import {
 import { Tooltip } from "~/components/adk-chat-ui/tooltip";
 import { Button } from "~/components/ui/button";
 import { cn } from "~/lib/utils";
+import { cancelStream, useStore } from "~/core/store/store"; // Add cancelStream and useStore
 
 export function InputBox({
   className,
@@ -24,14 +25,15 @@ export function InputBox({
   const [message, setMessage] = useState("");
   const [imeStatus, setImeStatus] = useState<"active" | "inactive">("inactive");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isActuallyResponding = useStore((state) => state.responding); // Get actual responding state
 
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);
 
-  const handleSendMessage = useCallback(() => {
-    if (responding) {
-      onCancel?.();
+  const handleSendOrCancel = useCallback(() => {
+    if (isActuallyResponding) {
+      cancelStream(); // Call the store's cancel function
     } else {
       if (message.trim() === "") {
         return;
@@ -39,18 +41,13 @@ export function InputBox({
       if (onSend) {
         onSend(message);
         setMessage("");
-        textareaRef.current?.focus(); 
+        textareaRef.current?.focus();
       }
     }
-  }, [responding, onCancel, message, onSend]);
+  }, [isActuallyResponding, message, onSend]);
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (responding && event.key === "Enter") { 
-        event.preventDefault();
-        handleSendMessage();
-        return;
-      }
       if (
         event.key === "Enter" &&
         !event.shiftKey &&
@@ -59,10 +56,10 @@ export function InputBox({
         imeStatus === "inactive"
       ) {
         event.preventDefault();
-        handleSendMessage();
+        handleSendOrCancel(); // Use the combined handler
       }
     },
-    [responding, imeStatus, handleSendMessage],
+    [imeStatus, handleSendOrCancel],
   );
 
   return (
@@ -91,7 +88,7 @@ export function InputBox({
             variant="ghost"
             size="icon"
             className="h-8 w-8 rounded-full"
-            onClick={handleSendMessage}
+            onClick={handleSendOrCancel}
             disabled={!message.trim() && !responding}
           >
             {responding ? (

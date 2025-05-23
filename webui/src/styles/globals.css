@@ -2,8 +2,6 @@
 @import "tailwindcss/components"; /* Import Tailwind components */
 @import "tailwindcss/utilities"; /* Import Tailwind utilities */
 
-@import "@tailwindcss/typography";
-
 /* 
   Your @theme and @layer base directives should come AFTER 
   the main Tailwind directives.
