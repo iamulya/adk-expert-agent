@@ -1,25 +1,29 @@
 import { env } from "~/env";
 
-export function resolveServiceURL(path: string, forSse: boolean = false) {
-  // This function now constructs the path that the Next.js UI will call.
-  // The Next.js server will then proxy these requests based on next.config.mjs rewrites.
+const appName = env.NEXT_PUBLIC_ADK_APP_NAME; 
+const userId = 'user';
 
-  // If NEXT_PUBLIC_API_URL is set, it implies the UI is calling an external proxy/gateway
-  // or directly if deployed appropriately. For local dev with Next.js proxy, this might not be set.
-  if (env.NEXT_PUBLIC_API_URL) {
-    let BASE_URL = env.NEXT_PUBLIC_API_URL.replace(/\/$/, ''); // Remove trailing slash if present
-    if (path === "stream") {
-      return `${BASE_URL}/stream`; // Or whatever the configured stream path is
-    }
-    return `${BASE_URL}/${path === "" ? "" : path}`;
-  }
+export function resolveServiceURL(
+  pathTemplate: "create_session" | "run_sse_root", // Changed template name
+  // sessionId is no longer needed for run_sse_root URL path
+) {
+  let specificPath = "";
 
-  // Default to using the Next.js proxy paths
-  if (forSse && path === "stream") {
-    return "/api/adk/stream"; // Path for EventSource
+  switch (pathTemplate) {
+    case "create_session":
+      specificPath = `/api/adk/apps/${appName}/users/${userId}/sessions`;
+      break;
+    case "run_sse_root": // For POSTing to the root /run_sse
+      specificPath = `/api/adk/run_sse`;
+      break;
+    default:
+      const _exhaustiveCheck: never = pathTemplate;
+      throw new Error(`Unknown path template: ${_exhaustiveCheck}`);
   }
-  if (path === "") { // For POSTing to the root agent
-    return "/api/adk";
+  
+  if (env.NEXT_PUBLIC_API_URL && !env.NEXT_PUBLIC_API_URL.includes('localhost')) {
+      const BASE_URL = env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
+      return `${BASE_URL}${specificPath}`;
   }
-  return `/api/adk/${path}`; // For any other specific paths (less common for basic chat)
+  return specificPath;
 }

@@ -2,178 +2,225 @@ import { nanoid } from "nanoid";
 import { toast } from "sonner";
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
-import { sendAdkMessage, createAdkEventSource } from "../api/chat"; // Updated import
-import type { ChatEvent } from "../api/types"; // Keep ChatEvent for UI consistency
+import { 
+  createAdkSession,        
+  postToRunSseAndStream 
+} from "../api/chat";
+import type { AdkSession, ChatEvent } from "../api/types"; 
 import type { Message } from "../messages";
 import { mergeMessage } from "../messages";
 
-const SESSION_ID = nanoid(); 
-
-export const useStore = create<{
+interface AppState {
   responding: boolean;
-  sessionId: string;
+  adkSession: AdkSession | null; 
   messageIds: string[];
   messages: Map<string, Message>;
-  currentEventSource: EventSource | null; // To manage the EventSource instance
+  currentAbortController: AbortController | null;
+  
+  setAdkSession: (session: AdkSession | null) => void;
   appendMessage: (message: Message) => void;
   updateMessage: (message: Message) => void;
-  setEventSource: (es: EventSource | null) => void;
-}>((set, get) => ({
+  setAbortController: (ac: AbortController | null) => void;
+  clearChatAndCreateNewSession: () => Promise<void>; 
+  initializeSessionIfNeeded: () => Promise<AdkSession | null>;
+}
+
+export const useStore = create<AppState>((set, get) => ({
   responding: false,
-  sessionId: SESSION_ID,
+  adkSession: null, 
   messageIds: [],
   messages: new Map<string, Message>(),
-  currentEventSource: null,
+  currentAbortController: null,
 
+  setAdkSession: (session) => {
+     console.log("[STORE] setAdkSession called. Session:", session);
+     set({ adkSession: session, currentAbortController: null });
+  },
   appendMessage(message: Message) {
+    console.log("[STORE] appendMessage called. Message ID:", message.id, "Role:", message.role);
     set((state) => ({
       messageIds: [...state.messageIds, message.id],
       messages: new Map(state.messages).set(message.id, message),
     }));
   },
   updateMessage(message: Message) {
+    // console.log("[STORE] updateMessage called. Message ID:", message.id, "New content length:", message.content.length, "Is Streaming:", message.isStreaming, "Finish Reason:", message.finishReason);
     set((state) => ({
       messages: new Map(state.messages).set(message.id, message),
     }));
   },
-  setEventSource(es: EventSource | null) {
-    set({ currentEventSource: es });
+  setAbortController(ac: AbortController | null) {
+    console.log("[STORE] setAbortController called. New AC:", !!ac);
+    const oldAc = get().currentAbortController;
+    if (oldAc && oldAc !== ac) {
+      console.log("[STORE] Aborting previous AbortController.");
+      oldAc.abort("New request started or session cleared");
+    }
+    set({ currentAbortController: ac });
+  },
+  async clearChatAndCreateNewSession() {
+    console.log("[STORE] clearChatAndCreateNewSession called.");
+    const { currentAbortController, setAbortController, setAdkSession } = get();
+    if (currentAbortController) {
+      currentAbortController.abort("Chat cleared by user");
+      setAbortController(null);
+    }
+    set({ messageIds: [], messages: new Map(), responding: false, adkSession: null }); 
+    try {
+      console.log("[STORE] Attempting to create new ADK session after clearing chat...");
+      const newSession = await createAdkSession(); 
+      setAdkSession(newSession);
+      console.log("[STORE] New ADK session created and set:", newSession);
+    } catch (error) {
+        console.error("[STORE] Failed to create new ADK session after clearing chat:", error);
+        toast.error("Could not start a new chat session with the agent.");
+    }
+  },
+  async initializeSessionIfNeeded() {
+     let session = get().adkSession;
+     if (!session || !session.session_id) {
+         console.log("[STORE] initializeSessionIfNeeded: No valid ADK session found, creating one...");
+         try {
+             session = await createAdkSession();
+             get().setAdkSession(session);
+         } catch (error) {
+             console.error("[STORE] initializeSessionIfNeeded: Failed to initialize ADK session:", error);
+             toast.error(`Error connecting to agent: ${(error as Error).message}`);
+             return null; 
+         }
+     } else {
+        // console.log("[STORE] initializeSessionIfNeeded: Existing ADK session found:", session);
+     }
+     return session;
   }
 }));
-
+   
 export async function sendMessage(
   userInput: string,
-  params: Record<string, unknown> = {}, // Kept for potential future use
-  options: { abortSignal?: AbortSignal } = {}, // AbortSignal for the initial POST
+  _params: Record<string, unknown> = {},
 ) {
-  const currentSessionId = useStore.getState().sessionId;
+  console.log("[STORE] sendMessage called. User input:", userInput);
+  console.log("[STORE] Current responding state (before set):", useStore.getState().responding);
+  useStore.setState({ responding: true });
+  console.log("[STORE] Responding state set to true.");
 
-  // 1. Append User Message to UI
-  const userMessageId = nanoid();
+  const currentAdkSession = await useStore.getState().initializeSessionIfNeeded();
+  
+  if (!currentAdkSession || !currentAdkSession.session_id) { 
+    console.error("[STORE] sendMessage: Could not ensure ADK session. Aborting send.");
+    useStore.setState({ responding: false }); 
+    return; 
+  }
+  
+  const adkSessionIdToUse = currentAdkSession.session_id;
+  console.log("[STORE] sendMessage: Using ADK Session ID:", adkSessionIdToUse);
+
+  const userMessageId = nanoid(); 
   useStore.getState().appendMessage({
     id: userMessageId,
-    threadId: currentSessionId,
+    threadId: adkSessionIdToUse, 
     role: "user",
     content: userInput,
     contentChunks: [userInput],
     agent: "user",
   });
 
-  useStore.setState({ responding: true });
-
-  // 2. Create a placeholder for Assistant's message
-  const assistantMessageId = nanoid();
+  const assistantMessageId = nanoid(); 
   let assistantMessage: Message = {
     id: assistantMessageId,
-    threadId: currentSessionId,
+    threadId: adkSessionIdToUse,
     role: "assistant",
-    agent: "adk_expert_agent",
+    agent: process.env.NEXT_PUBLIC_ADK_APP_NAME || 'expert-agents',
     content: "",
     contentChunks: [],
     isStreaming: true,
   };
   useStore.getState().appendMessage(assistantMessage);
+  console.log("[STORE] Appended placeholder assistant message. ID:", assistantMessageId);
+
+  const abortController = new AbortController();
+  useStore.getState().setAbortController(abortController);
 
   try {
-    // 3. Send the message to ADK via POST
-    const postResponse = await sendAdkMessage(userInput, currentSessionId, options);
-    if (!postResponse.ok) {
-      const errorText = await postResponse.text();
-      throw new Error(`Failed to send message to ADK: ${postResponse.status} ${postResponse.statusText} - ${errorText}`);
-    }
-    // console.log("ADK POST Response:", await postResponse.json()); // Or .text() if not JSON
+    console.log("[STORE] Calling postToRootRunSseAndStream for session:", adkSessionIdToUse);
+    const stream = postToRunSseAndStream(adkSessionIdToUse, userInput, { abortSignal: abortController.signal });
 
-    // 4. Setup EventSource to receive stream
-    const eventSource = createAdkEventSource(
-      currentSessionId,
-      (chunkData) => { // onMessage
-        const currentAssistantMsg = useStore.getState().messages.get(assistantMessageId);
-        if (currentAssistantMsg) {
-          // Adapt chunkData to ChatEvent structure for mergeMessage
-          const chatEvent: ChatEvent = {
-            type: "message_chunk",
-            data: {
-              id: assistantMessageId, // id of the message being updated
-              thread_id: currentSessionId,
-              role: "assistant",
-              agent: "adk_expert_agent",
-              content: chunkData.text,
-              finish_reason: chunkData.done ? "stop" : undefined,
-            },
-          };
-          const updatedMsg = mergeMessage(currentAssistantMsg, chatEvent);
-          useStore.getState().updateMessage(updatedMsg);
-        }
-      },
-      (error) => { // onError
-        console.error("SSE Error in store:", error);
-        toast.error(`Streaming error: ${(error as Error).message || "Unknown SSE error"}`);
-        const finalMsg = useStore.getState().messages.get(assistantMessageId);
-        if (finalMsg?.isStreaming) {
-          finalMsg.isStreaming = false;
-          finalMsg.finishReason = "error";
-          useStore.getState().updateMessage(finalMsg);
-        }
-        useStore.setState({ responding: false, currentEventSource: null });
-      },
-      () => { // onOpen
-         useStore.getState().setEventSource(eventSource);
-      },
-      () => { // onClose (called by server 'close' event or EventSource.close())
-        const finalMsg = useStore.getState().messages.get(assistantMessageId);
-        if (finalMsg?.isStreaming) { // Ensure it's marked as not streaming
-          finalMsg.isStreaming = false;
-          if (!finalMsg.finishReason) finalMsg.finishReason = "stop"; // If not already set by 'done'
-          useStore.getState().updateMessage(finalMsg);
-        }
-        useStore.setState({ responding: false, currentEventSource: null });
+    for await (const event of stream) {
+      if (abortController.signal.aborted) {
+          console.log("[STORE] Stream processing aborted in sendMessage loop.");
+          break; 
       }
-    );
-    if (eventSource) { // Only set if not mock
-        useStore.getState().setEventSource(eventSource);
-    }
+      const eventForUIMerge: ChatEvent = {
+        ...event,
+        data: { ...event.data, id: assistantMessageId }
+      };
+      // console.log("[STORE] Received event from stream for UI merge:", JSON.stringify(eventForUIMerge, null, 2).substring(0, 300) + "...");
 
+      const currentAssistantMsg = useStore.getState().messages.get(assistantMessageId);
+      if (currentAssistantMsg) {
+        const updatedMsg = mergeMessage(currentAssistantMsg, eventForUIMerge);
+        useStore.getState().updateMessage(updatedMsg);
+      } else {
+        console.warn("[STORE] Could not find assistant message to update. ID:", assistantMessageId);
+      }
+      if (eventForUIMerge.data.finish_reason === "stop") {
+        console.log("[STORE] Finish reason 'stop' received in event from stream, breaking loop for message ID:", assistantMessageId);
+        break;
+      }
+    }
+    console.log("[STORE] Finished iterating stream for message ID:", assistantMessageId);
 
   } catch (error) {
-    console.error("Error in sendMessage:", error);
-    toast.error(`Failed to send message: ${(error as Error).message}`);
-    const finalAssistantMsg = useStore.getState().messages.get(assistantMessageId);
-    if (finalAssistantMsg) { // Check if it exists before trying to update
-        finalAssistantMsg.isStreaming = false;
-        finalAssistantMsg.finishReason = "error";
-        useStore.getState().updateMessage(finalAssistantMsg);
-    }
-    useStore.setState({ responding: false, currentEventSource: null });
-  }
-  // Note: `responding` is set to false by the EventSource onClose/onError handlers now.
-}
-
-
-// Function to cancel the stream
-export function cancelStream() {
-    const es = useStore.getState().currentEventSource;
-    if (es) {
-        es.close(); // This will trigger the onclose handler in createAdkEventSource
-        console.log("Manually closed EventSource.");
-    }
-    // Update responding state if it wasn't updated by onclose
-    if (useStore.getState().responding) {
-        useStore.setState({ responding: false });
-        // Also update the last assistant message to not be streaming
-        const { messageIds, messages, updateMessage } = useStore.getState();
-        if (messageIds.length > 0) {
-            const lastMessageId = messageIds[messageIds.length - 1];
-            const lastMessage = messages.get(lastMessageId!);
-            if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
-                const updatedMessage = { ...lastMessage, isStreaming: false, finishReason: "stop" as const };
-                updateMessage(updatedMessage);
-            }
+    if (abortController.signal.aborted && (error as Error).name === 'AbortError') {
+        console.log("[STORE] Fetch stream for session-specific /run_sse aborted by AbortController in sendMessage.");
+    } else {
+        console.error("[STORE] Error in sendMessage (streaming from session-specific /run_sse):", error);
+        toast.error(`Message processing error: ${(error as Error).message}`);
+        const finalAssistantMsg = useStore.getState().messages.get(assistantMessageId);
+        if (finalAssistantMsg) { 
+            finalAssistantMsg.isStreaming = false;
+            finalAssistantMsg.finishReason = "error";
+            useStore.getState().updateMessage(finalAssistantMsg);
         }
     }
+  } finally {
+    console.log("[STORE] sendMessage finally block. Message ID:", assistantMessageId, "Aborted:", abortController.signal.aborted, "Current AC in store matches:", useStore.getState().currentAbortController === abortController);
+    if (!abortController.signal.aborted || useStore.getState().currentAbortController === abortController) {
+        useStore.setState({ responding: false, currentAbortController: null });
+        console.log("[STORE] Set responding to false in finally block.");
+    }
+  }
 }
 
+export function cancelStream() {
+    console.log("[STORE] cancelStream called.");
+    const ac = useStore.getState().currentAbortController;
+    if (ac) {
+        console.log("[STORE] Aborting current AbortController.");
+        ac.abort("User cancelled request from UI"); 
+    }
+    if (useStore.getState().responding) {
+        console.log("[STORE] cancelStream: Responding was true, setting to false.");
+        useStore.setState({ responding: false });
+        const { messageIds, messages, updateMessage, adkSession } = useStore.getState();
+         if (messageIds.length > 0 && adkSession) { 
+            const currentSessionId = adkSession.session_id;
+            for (let i = messageIds.length - 1; i >= 0; i--) {
+                const msgId = messageIds[i];
+                const msg = messages.get(msgId!);
+                if (msg && msg.threadId === currentSessionId && msg.role === 'assistant' && msg.isStreaming) {
+                    console.log("[STORE] cancelStream: Updating last assistant message to not streaming. ID:", msg.id);
+                    const updatedMessage = { ...msg, isStreaming: false, finishReason: "stop" as const };
+                    updateMessage(updatedMessage);
+                    break; 
+                }
+            }
+        }
+    } else {
+        console.log("[STORE] cancelStream: Responding was already false.");
+    }
+}
 
-// Hooks for easy component consumption
 export function useMessage(messageId: string | null | undefined) {
   return useStore(
     useShallow((state) => (messageId ? state.messages.get(messageId) : undefined)),
@@ -182,4 +229,8 @@ export function useMessage(messageId: string | null | undefined) {
 
 export function useMessageIds() {
   return useStore(useShallow((state) => state.messageIds));
+}
+   
+export function useAdkSessionDetails() { 
+    return useStore(useShallow((state) => state.adkSession));
 }

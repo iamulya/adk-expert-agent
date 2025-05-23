@@ -1,34 +1,33 @@
+// webui/src/app/chat/main.tsx
 "use client";
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { ConversationStarter } from "./components/conversation-starter";
 import { InputBox } from "./components/input-box";
 import { MessageListView } from "./components/message-list-view";
 import { useMessageIds, useStore, sendMessage as sendApiMessage } from "~/core/store/store";
-import { cn } from "~/lib/utils";
+// import { toast } from "sonner"; // Not needed here if errors handled in store
 
 export default function Main() {
   const messageIds = useMessageIds();
   const responding = useStore((state) => state.responding);
-  const abortControllerRef = useRef<AbortController | null>(null);
+ 
+  useEffect(() => {
+    useStore.getState().initializeSessionIfNeeded().catch(error => {
+        console.error("Main.tsx: Failed to initialize session on mount:", error);
+    });
+  }, []);
+
 
   const handleSend = useCallback(
     async (message: string) => {
-      const abortController = new AbortController();
-      abortControllerRef.current = abortController;
       try {
-        await sendApiMessage(message, {}, { abortSignal: abortController.signal });
+        await sendApiMessage(message);
       } catch (e) {
-        console.error("Send message error in Main.tsx", e);
+        console.error("Send message error in Main.tsx (from sendApiMessage):", e);
       }
     },
     [],
   );
-
-  const handleCancel = useCallback(() => {
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = null;
-    useStore.setState({ responding: false });
-  }, []);
 
   return (
     <div className="flex h-full w-full max-w-2xl flex-col justify-center px-4 pt-16 pb-4">
@@ -42,7 +41,7 @@ export default function Main() {
         )}
         <InputBox
           className="h-full w-full"
-          responding={responding}
+          responding={responding} 
           onSend={handleSend}
         />
       </div>
