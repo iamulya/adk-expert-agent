@@ -27,20 +27,14 @@ export function MessageListView({ className }: { className?: string }) {
         {messageIds.map((messageId) => (
           <MessageListItem key={messageId} messageId={messageId} />
         ))}
-        {/* This general loading animation appears if 'responding' is true AND the last message was from the user.
-            It will typically be very brief as the assistant placeholder message gets added quickly.
-            The per-message loading animation inside the assistant's bubble is usually more prominent.
-        */}
         {responding && messageIds.length > 0 && getMessageRole(messageIds[messageIds.length - 1]) === 'user' && (
           <motion.li
-            className={cn(
-              "mt-1 flex w-full flex-col items-start" // Aligns to left like an assistant message
-            )}
+            className={cn("mt-1 flex w-full flex-col items-start")}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
           >
-            <MessageBubble message={{ role: "assistant" } as Message}> {/* Simulates an assistant bubble */}
+            <MessageBubble message={{ role: "assistant" } as Message}>
               <LoadingAnimation size="sm" />
             </MessageBubble>
           </motion.li>
@@ -69,8 +63,19 @@ function MessageListItem({
   }
 
   const gcsImageRegex = /^(https?:\/\/storage\.googleapis\.com\/[^?]+\.(?:png|jpe?g|gif|webp))(?:\?.*)?$/i;
-  const hasContent = message.content && message.content.trim() !== "";
-  const isGcsImage = hasContent && gcsImageRegex.test(message.content);
+  const hasActualTextOrImageContent = message.content && message.content.trim() !== "";
+  const isGcsImage = hasActualTextOrImageContent && gcsImageRegex.test(message.content);
+  const isAssistantStreaming = message.isStreaming && message.role === "assistant";
+
+  if (message.role === "assistant") {
+    console.log(
+        `[MessageListItem] Assistant ID: ${messageId}, ` +
+        `message.isStreaming: ${message.isStreaming}, ` +
+        `message.role: ${message.role}, ` +
+        `CALCULATED isAssistantStreaming: ${isAssistantStreaming}` +
+        `CALCULATED hasActualTextOrImageContent: ${hasActualTextOrImageContent}`
+    );
+  }
 
   return (
     <motion.li
@@ -79,7 +84,6 @@ function MessageListItem({
         message.role === "user" ? "items-end" : "items-start",
         className,
       )}
-      // Key is already on the <MessageListItem> in the map in MessageListView
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       style={{ transition: "all 0.2s ease-out" }}
@@ -88,10 +92,19 @@ function MessageListItem({
         ease: "easeOut",
       }}
     >
-      <MessageBubble message={message}>
+      <MessageBubble message={message} isStreamingWithoutContent={isAssistantStreaming && !hasActualTextOrImageContent}>
         <div className="flex w-full flex-col">
-          {/* Render GCS Image if applicable */}
-          {hasContent && isGcsImage && (
+          {/* Render LoadingAnimation if assistant is streaming */}
+          {isAssistantStreaming && (
+            <LoadingAnimation
+              size="sm"
+              // No top margin if it's the only thing, add bottom margin if content will appear below it.
+              className={cn("self-start", {"mb-1": hasActualTextOrImageContent})}
+            />
+          )}
+
+          {/* Render GCS Image if applicable and content exists */}
+          {hasActualTextOrImageContent && isGcsImage && (
             <Card className="my-1 w-auto max-w-full self-start md:max-w-md">
               <CardContent className="p-1.5">
                 <ImageComponent src={message.content} alt="Mermaid Diagram" className="max-h-[400px] w-auto rounded-md object-contain" />
@@ -99,15 +112,11 @@ function MessageListItem({
             </Card>
           )}
 
-          {/* Render Markdown if content is not a GCS image (or if it's user message) */}
-          {hasContent && !isGcsImage && (
+          {/* Render Markdown if content exists and is not a GCS image */}
+          {hasActualTextOrImageContent && !isGcsImage && (
+            // No extra wrapper div needed here, Markdown will handle its own layout.
+            // If a loading animation was present, its mb-1 will create space.
             <Markdown>{message.content}</Markdown>
-          )}
-
-          {/* Per-message loading animation for assistant while streaming */}
-          {message.isStreaming && message.role === "assistant" && (
-            // Adjust margin if there's no content yet to avoid double spacing
-            <LoadingAnimation size="sm" className={cn("mt-1 self-start", { "mt-0": !hasContent })} />
           )}
         </div>
       </MessageBubble>
@@ -115,15 +124,17 @@ function MessageListItem({
   );
 }
 
-// Standard MessageBubble component
+// Standard MessageBubble component (remains the same as your "Option 1" from previous response)
 function MessageBubble({
   className,
   message,
   children,
+  isStreamingWithoutContent
 }: {
   className?: string;
-  message: Message; // Can be a partial message for the general loader
+  message: Message;
   children: React.ReactNode;
+  isStreamingWithoutContent?: boolean;
 }) {
   return (
     <div
@@ -132,6 +143,7 @@ function MessageBubble({
         message.role === "user"
           ? "bg-brand text-primary-foreground rounded-br-sm"
           : "bg-card text-card-foreground rounded-bl-sm",
+        isStreamingWithoutContent && "min-h-[36px]", // e.g., h-9 is 36px. Adjust as needed.
         className,
       )}
     >
