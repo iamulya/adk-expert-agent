@@ -18,8 +18,11 @@ export function Welcome({ className }: { className?: string }) {
       </h3>
       <p className="text-muted-foreground max-w-md text-sm md:text-base">
         Hello! I'm here to help you with your queries about Google's Agent Development Kit (ADK).
-        I can answer any ADK related question, provide you guidance about any of ADK's GitHub issues. 
+        I can answer any ADK related question, even provide you guidance about any of ADK's GitHub issues. 
         Furthermore, I can output the information you request in pdf, slides and can also generate architecture diagrams.
+        <br />
+        <b>Important: </b>Since the best model is being used to give you the most accurate and detailed answers, it can take some time to respond to certain queries where deeper analysis is required.
+        <br />
       </p>
     </motion.div>
   );

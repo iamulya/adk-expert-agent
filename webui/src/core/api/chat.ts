@@ -1,7 +1,7 @@
 // webui/src/core/api/chat.ts
 import { env } from "~/env";
 import { resolveServiceURL } from "./resolve-service-url";
-import type { ChatEvent, ChatResponseChunk, AdkSession } from "./types";
+import type { ChatEvent, AdkSession } from "./types"; // ChatResponseChunk might be implicitly covered by parsedEventData
 import { nanoid } from "nanoid";
 import { sleep } from "../utils";
 import { fetchStream } from "../sse";
@@ -56,16 +56,12 @@ export async function* postToRunSseAndStream(
     parts: [{ text: userMessage }],
   };
 
-  // Ensure this reflects your desired backend behavior.
-  // If ADK backend is configured for streaming only with "streaming": true,
-  // and "streaming": false means "send full response in one 'message' event",
-  // the logic below is now designed to handle that.
   const requestPayloadForRunSse = {
     appName: ADK_APP_NAME,
     userId: ADK_USER_ID,
     sessionId: adkSessionId,
     newMessage: newMessagePayloadForRunSse,
-    streaming: false, // Set this to true if you want the backend to attempt to stream via "delta" events
+    streaming: false, // Keep streaming true for delta events
   };
 
   if (env.NEXT_PUBLIC_MOCK_API) {
@@ -76,7 +72,7 @@ export async function* postToRunSseAndStream(
       "This is a streamed chunk. ",
       "Another chunk for you.",
     ];
-    const assistantMessageId = adkSessionId + "_mock_assistant_" + Date.now(); // Use a different ID for mock to avoid clash if UI uses nanoid()
+    const assistantMessageId = adkSessionId + "_mock_assistant_" + Date.now();
     for (const textChunk of mockResponses) {
         await sleep(300);
         yield {
@@ -112,12 +108,10 @@ export async function* postToRunSseAndStream(
     signal: options.abortSignal,
   });
 
-  // This assistantMessageIdForUI is what the UI store will use for its message.id
-  // It's generated on the client to have an immediate ID for the placeholder.
   const assistantMessageIdForUI = useStore.getState().messageIds.find(id => {
     const msg = useStore.getState().messages.get(id);
     return msg?.role === 'assistant' && msg?.isStreaming === true && msg?.threadId === adkSessionId;
-  }) || "assistant_" + nanoid(); // Fallback, but should ideally get from store if placeholder was added.
+  }) || "assistant_" + nanoid();
 
 
   let streamHasYieldedData = false;
@@ -131,63 +125,98 @@ export async function* postToRunSseAndStream(
       }
       streamHasYieldedData = true;
 
+      // `parsedEventData` is the raw JSON payload from ADK for this specific SSE event.
+      // It might contain `text` for simple deltas, or `content.parts` for structured messages.
+      const parsedEventData = JSON.parse(event.data); 
+      
+      let uiMessageText = ""; // Text to be sent to the UI message store for this chunk/event
+      let isStreamSegmentDone = false; // True if (event is 'message') or (delta event has 'done: true')
+      let isAgentTurnCompletelyFinal = false; // True if this event signals the end of the agent's entire turn
+
       if (event.event === "delta" || event.event === "message") {
-        try {
-          const parsedEventData = JSON.parse(event.data);
-          let contentText = "";
-          let isDone = false;
+          isStreamSegmentDone = (event.event === "message") || (parsedEventData.done === true);
 
-          if (event.event === "delta") {
-            const chunkData = parsedEventData as ChatResponseChunk;
-            console.log("[API CHAT] Parsed SSE Delta Chunk from /run_sse:", chunkData);
-            contentText = chunkData.text ?? ""; // Ensure contentText is always a string
-            isDone = chunkData.done;
-          } else if (event.event === "message") {
-            console.log("[API CHAT] Processing 'message' event from /run_sse:", parsedEventData);
-            if (parsedEventData.content && parsedEventData.content.parts && parsedEventData.content.parts[0] && typeof parsedEventData.content.parts[0].text === 'string') {
-              contentText = parsedEventData.content.parts[0].text;
-            } else {
-              console.warn("[API CHAT] Could not extract text from 'message' event structure. Raw data:", parsedEventData);
-              contentText = "[Error: Could not parse backend message event content]";
-            }
-            isDone = true; // A single "message" event implies the full response is delivered.
+          let hasFunctionCall = false;
+          let hasFunctionResponse = false; // Tracks if a function_response is present in the current event part
+
+          if (parsedEventData.content && parsedEventData.content.parts && parsedEventData.content.parts.length > 0) {
+              // For simplicity, assuming the primary information (text, function_call, function_response)
+              // is in the first part of the content. ADK might send multiple parts.
+              const adkPart = parsedEventData.content.parts[0]; 
+
+              if (adkPart.functionCall) {
+                  hasFunctionCall = true;
+                  // If agent "thinks" (text) before calling a tool, capture it.
+                  if (adkPart.text) {
+                      uiMessageText = adkPart.text;
+                  }
+                  // A function call means the agent's turn is NOT final yet.
+                  isAgentTurnCompletelyFinal = false;
+              } else if (adkPart.functionResponse) {
+                  hasFunctionResponse = true;
+                  // Check the ADK-specific 'is_final_response' flag as per prompt requirement
+                  // This flag should ideally be sent by ADK on the part containing the function_response
+                  // when that function_response is part of the agent's final utterance to the user.
+                  if ((parsedEventData.actions && parsedEventData.actions.skipSummarization) || parsedEventData.isFinalResponse) {
+                      isAgentTurnCompletelyFinal = true; // This is the key condition from the prompt
+                      if (adkPart.functionResponse.response && adkPart.functionResponse.response.result && adkPart.functionResponse.response.result.parts.length > 0) {
+                          const adkFuncResponsePart = adkPart.functionResponse.response.result.parts[0]; 
+                          uiMessageText = adkFuncResponsePart.text; // Use this text as the agent's final message
+                      } else {
+                          uiMessageText = ""; // Final response, but no accompanying text
+                      }
+                  } else {
+                      // This is an intermediate function_response. The agent's turn is not final.
+                      // UI typically doesn't show these directly as user-facing messages
+                      // unless the agent explicitly formats them into its own 'text' response later.
+                      isAgentTurnCompletelyFinal = false;
+                  }
+              } else if (adkPart.text) { // Plain text part
+                  uiMessageText = adkPart.text;
+              }
+          } else if (parsedEventData.text) { 
+              // Handles simpler event structures, e.g., a delta containing only text
+              uiMessageText = parsedEventData.text;
           }
 
-          yield {
-            type: "message_chunk",
-            data: {
-              id: assistantMessageIdForUI,
-              thread_id: adkSessionId,
-              role: "assistant",
-              agent: ADK_APP_NAME,
-              content: contentText,
-              finish_reason: isDone ? "stop" : undefined,
-            },
-          } as ChatEvent;
-
-          if (isDone && event.event === "message") { // If full message event is processed, break
-            console.log("[API CHAT] Full 'message' event processed, breaking SSE loop.");
-            break;
+          // Determine overall turn finality if not already set by a final function_response
+          if (!isAgentTurnCompletelyFinal) { 
+              if (hasFunctionCall || hasFunctionResponse /* implies !adkPart.is_final_response */) {
+                  // If a functionCall is made, or a non-final functionResponse is received,
+                  // the agent's turn is not over.
+                  isAgentTurnCompletelyFinal = false; 
+              } else if (isStreamSegmentDone) {
+                  // If a delta stream ends (parsedEventData.done) or it's a complete 'message' event,
+                  // AND there are no pending tool interactions (functionCall or non-final functionResponse from this event),
+                  // then the agent's turn is considered final.
+                  isAgentTurnCompletelyFinal = true;
+              }
           }
-          if (isDone && event.event === "delta" && (contentText === null || contentText === "")) {
-             console.log("[API CHAT] /run_sse Delta 'done' with null/empty text, also ensuring stop signal.");
-             // This case might be redundant if the above yield already set finish_reason: "stop"
-             // but kept for safety if a "done" delta has no text.
+          
+          // Yield to UI store if there's text to display or if it's a final signal (even if empty)
+          if (uiMessageText || isAgentTurnCompletelyFinal) {
+              yield {
+                  type: "message_chunk",
+                  data: {
+                      id: assistantMessageIdForUI,
+                      thread_id: adkSessionId,
+                      role: "assistant",
+                      agent: parsedEventData.agent || ADK_APP_NAME, 
+                      content: uiMessageText, 
+                      finish_reason: isAgentTurnCompletelyFinal ? "stop" : undefined,
+                  },
+              } as ChatEvent;
           }
 
-        } catch (e) {
-          console.error(`[API CHAT] Failed to parse or process ADK ${event.event} event from /run_sse:`, event.data, e);
-          yield {
-            type: "message_chunk",
-            data: {
-              id: assistantMessageIdForUI, thread_id: adkSessionId, role: "assistant",
-              agent: ADK_APP_NAME, content: "[Error processing backend response stream]", finish_reason: "error",
-            },
-          } as ChatEvent;
-        }
+          // Break loop if the agent's turn is completely final
+          if (isAgentTurnCompletelyFinal) {
+              console.log(`[API CHAT] Agent turn is final. Event: ${event.event}. Breaking SSE loop.`);
+              break;
+          }
+
       } else if (event.event === "close") {
         console.log("[API CHAT] Received SSE 'close' event from /run_sse.");
-        yield { // Ensure UI knows the stream is finished
+        yield { 
           type: "message_chunk",
           data: {
             id: assistantMessageIdForUI, thread_id: adkSessionId, role: "assistant",
@@ -214,29 +243,16 @@ export async function* postToRunSseAndStream(
       }
   } finally {
       console.log("[API CHAT] Exiting /run_sse SSE stream processing loop. streamHasYieldedData:", streamHasYieldedData, "Aborted:", options.abortSignal?.aborted);
-      // If the stream was aborted, or if it finished naturally (e.g. "close" or "message" event break),
-      // the finish_reason should have already been set.
-      // This ensures a stop signal if the loop terminates unexpectedly without yielding a "done" state AND wasn't aborted.
-      if (!streamHasYieldedData && !options.abortSignal?.aborted) {
-          console.log("[API CHAT] No data yielded from /run_sse stream and not aborted, ensuring stop signal for UI.");
-          yield {
-            type: "message_chunk",
-            data: {
-              id: assistantMessageIdForUI, thread_id: adkSessionId, role: "assistant",
-              agent: ADK_APP_NAME, content: "", finish_reason: "stop", // Or "error" if appropriate
-            },
-          } as ChatEvent;
-      }
-      // Check if the message is still marked as streaming in the store, if so, mark it as stopped.
-      // This is a final safeguard.
       const finalStoreMessage = useStore.getState().messages.get(assistantMessageIdForUI);
       if (finalStoreMessage?.isStreaming && !options.abortSignal?.aborted) {
-        console.warn(`[API CHAT] SSE loop finished, but message ${assistantMessageIdForUI} still marked as streaming in store. Forcing stop.`);
+        // This ensures that if the loop exited for reasons other than a clean 'isAgentTurnCompletelyFinal' or abortion,
+        // the UI still gets a final "stop" signal for the message.
+        console.warn(`[API CHAT] SSE loop finished, but message ${assistantMessageIdForUI} still marked as streaming. Forcing stop.`);
          yield {
             type: "message_chunk",
             data: {
               id: assistantMessageIdForUI, thread_id: adkSessionId, role: "assistant",
-              agent: ADK_APP_NAME, content: finalStoreMessage.content, finish_reason: "stop",
+              agent: finalStoreMessage.agent || ADK_APP_NAME, content: finalStoreMessage.content, finish_reason: "stop",
             },
           } as ChatEvent;
       }

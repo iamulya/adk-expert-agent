@@ -143,6 +143,7 @@ async def root_agent_after_tool_callback(
 
     if tool.name == github_issue_processing_agent.name:
         logger.info(f"RootAgent (after_tool_callback): Processing response from '{github_issue_processing_agent.name}'.")
+        tool_context.actions.skip_summarization = True 
         response_text = "Error: Could not process response from sequential agent."
         try:
             if isinstance(tool_response, str):
@@ -165,17 +166,20 @@ async def root_agent_after_tool_callback(
 
     elif tool.name == document_generator_agent.name:
         logger.info(f"RootAgent (after_tool_callback): Received response from '{document_generator_agent.name}': {str(tool_response)[:200]}")
+        # Assuming document_generator_agent's output (a URL or error) should also not be summarized.
+        #tool_context.actions.skip_summarization = True
         return genai_types.Content(parts=[genai_types.Part(text=str(tool_response))])
 
-    elif tool.name == diagram_generator_agent.name: # Handle new diagram agent
+    elif tool.name == diagram_generator_agent.name: 
         logger.info(f"RootAgent (after_tool_callback): Received response from '{diagram_generator_agent.name}': {str(tool_response)[:200]}")
-        # The response from diagram_generator_agent is the signed URL or an error message
+        # The response from diagram_generator_agent is the signed URL or an error message, should not be summarized.
+        #tool_context.actions.skip_summarization = True
         return genai_types.Content(parts=[genai_types.Part(text=str(tool_response))])
 
     elif tool.name == "prepare_document_content_tool":
         logger.info(f"RootAgent (after_tool_callback): 'prepare_document_content_tool' completed. Output from tool: {str(tool_response)[:200]}")
-        tool_context.actions.skip_summarization = False
-        return tool_response
+        tool_context.actions.skip_summarization = False 
+        return tool_response # Return the raw data for the instruction provider to process
 
     logger.warning(f"RootAgent (after_tool_callback): Callback for unhandled tool: {tool.name}")
     return None
@@ -352,11 +356,11 @@ root_agent = ADKAgent(
     model=Gemini(model=DEFAULT_MODEL_NAME),
     instruction=root_agent_instruction_provider,
     tools=root_agent_tools,
-    before_model_callback=log_prompt_before_model_call, # Re-enabled for debugging
+    before_model_callback=log_prompt_before_model_call, 
     after_tool_callback=root_agent_after_tool_callback,
     generate_content_config=genai_types.GenerateContentConfig(
-        temperature=0.0, # Keep low for orchestration
-        max_output_tokens=60000, # Increased slightly for potentially larger tool calls
+        temperature=0.0, 
+        max_output_tokens=60000, 
         top_p=0.6,
     )
 )
