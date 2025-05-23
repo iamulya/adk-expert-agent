@@ -1,0 +1,154 @@
+@import "tailwindcss/base"; /* Import Tailwind base styles */
+@import "tailwindcss/components"; /* Import Tailwind components */
+@import "tailwindcss/utilities"; /* Import Tailwind utilities */
+
+@import "@tailwindcss/typography";
+
+/* 
+  Your @theme and @layer base directives should come AFTER 
+  the main Tailwind directives.
+*/
+
+@layer base {
+  :root {
+    --radius: 0.5rem;
+    --app-background: hsl(0 0% 98%); 
+    --background: hsl(0 0% 100%);
+    --foreground: hsl(222.2 84.2% 4.9%);
+    --card: hsl(0 0% 100%);
+    --card-foreground: hsl(222.2 84.2% 4.9%);
+    --popover: hsl(0 0% 100%);
+    --popover-foreground: hsl(222.2 84.2% 4.9%);
+    --primary: hsl(221.2 83.2% 53.3%);
+    --primary-foreground: hsl(210 40% 98%);
+    --secondary: hsl(210 40% 96.1%);
+    --secondary-foreground: hsl(222.2 47.4% 11.2%);
+    --muted: hsl(210 40% 96.1%);
+    --muted-foreground: hsl(215.4 16.3% 46.9%);
+    --accent: hsl(210 40% 96.1%);
+    --accent-foreground: hsl(222.2 47.4% 11.2%);
+    --destructive: hsl(0 84.2% 60.2%);
+    --destructive-foreground: hsl(210 40% 98%);
+    --border: hsl(214.3 31.8% 91.4%);
+    --input: hsl(214.3 31.8% 91.4%);
+    --ring: hsl(221.2 83.2% 53.3%);
+    --brand: hsl(221.2 83.2% 53.3%);
+  }
+
+  .dark {
+    --app-background: hsl(222.2 84.2% 4.9%);
+    --background: hsl(222.2 84.2% 4.9%);
+    --foreground: hsl(210 40% 98%);
+    --card: hsl(222.2 47.4% 11.2%);
+    --card-foreground: hsl(210 40% 98%);
+    --popover: hsl(222.2 47.4% 11.2%);
+    --popover-foreground: hsl(210 40% 98%);
+    --primary: hsl(217.2 91.2% 59.8%);
+    --primary-foreground: hsl(222.2 47.4% 11.2%);
+    --secondary: hsl(217 32.6% 17.5%);
+    --secondary-foreground: hsl(210 40% 98%);
+    --muted: hsl(217 32.6% 17.5%);
+    --muted-foreground: hsl(215 20.2% 65.1%);
+    --accent: hsl(217 32.6% 17.5%);
+    --accent-foreground: hsl(210 40% 98%);
+    --destructive: hsl(0 62.8% 30.6%);
+    --destructive-foreground: hsl(210 40% 98%);
+    --border: hsl(217 32.6% 17.5%);
+    --input: hsl(217 32.6% 17.5%);
+    --ring: hsl(217.2 91.2% 59.8%);
+    --brand: hsl(217.2 91.2% 59.8%);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-app-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  .prose {
+    max-width: none; 
+  }
+  .prose :where(code):not(:where([class~="not-prose"] *))::before,
+  .prose :where(code):not(:where([class~="not-prose"] *))::after {
+    content: none;
+  }
+  .prose code {
+    @apply bg-muted text-muted-foreground px-1 py-0.5 rounded-sm text-xs; 
+  }
+  .prose pre {
+    @apply bg-muted text-muted-foreground p-3 rounded-md overflow-x-auto text-xs;
+  }
+  .prose pre code {
+    @apply bg-transparent p-0; 
+  }
+  .prose blockquote {
+    @apply border-l-4 border-primary pl-3 italic text-sm my-2;
+  }
+  .prose p { @apply my-1 leading-relaxed; } 
+  .prose ul, .prose ol { @apply my-2 pl-4; }
+  .prose li { @apply my-0.5; }
+  .prose table { @apply my-2 text-xs; }
+  .prose th, .prose td { @apply border px-2 py-1; }
+  .prose strong { @apply font-semibold; }
+  .prose a { @apply text-brand hover:underline; }
+}
+
+@theme { /* Keep your @theme directive as is, or move its content into the @layer base above if appropriate */
+  --font-sans:
+    var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+
+  --animate-fade-in: fade-in 1s; /* Renamed from --animate--fade-in */
+  @keyframes fade-in {
+    0% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+
+  --animate-spotlight: spotlight 2s ease 0.75s 1 forwards;
+  @keyframes spotlight {
+    0% {
+      opacity: 0;
+      transform: translate(-72%, -62%) scale(0.5);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, -40%) scale(1);
+    }
+  }
+}
+
+
+/* Keyframes should generally be at the root or within appropriate @layer at-rules, not inside @theme for Tailwind processing */
+@keyframes accordion-down {
+  from { height: 0; }
+  to { height: var(--radix-accordion-content-height); }
+}
+@keyframes accordion-up {
+  from { height: var(--radix-accordion-content-height); }
+  to { height: 0; }
+}
+
+/* Ensure these are not duplicated if already handled by tailwindcss-animate plugin */
+/* .animate-in { animation: fade-in 0.2s ease-out; }
+.slide-in-from-top-2 { transform: translateY(-0.5rem); animation: fade-in 0.2s ease-out; } 
+.slide-in-from-right-2 { transform: translateX(0.5rem); animation: fade-in 0.2s ease-out; }
+.slide-in-from-left-2 { transform: translateX(-0.5rem); animation: fade-in 0.2s ease-out; }
+.slide-in-from-bottom-2 { transform: translateY(0.5rem); animation: fade-in 0.2s ease-out; }
+.zoom-in-95 { transform: scale(0.95); animation: fade-in 0.15s ease-out; } */
+
+
+html {
+  scroll-behavior: smooth;
+}
+body {
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
