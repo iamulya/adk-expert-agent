@@ -44,10 +44,22 @@ export const useStore = create<AppState>((set, get) => ({
     }));
   },
   updateMessage(message: Message) {
-    // console.log("[STORE] updateMessage called. Message ID:", message.id, "New content length:", message.content.length, "Is Streaming:", message.isStreaming, "Finish Reason:", message.finishReason);
-    set((state) => ({
-      messages: new Map(state.messages).set(message.id, message),
-    }));
+    const oldMessages = get().messages;
+    const oldMessageForLog = oldMessages.get(message.id);
+  
+    console.log(
+      `[STORE updateMessage] ID: ${message.id}, Role: ${message.role}, ` +
+      `New Content: "${message.content?.slice(0,30)}...", New Streaming: ${message.isStreaming}, New Finish: ${message.finishReason}, ` +
+      `Old Content: "${oldMessageForLog?.content?.slice(0,30)}...", Old Streaming: ${oldMessageForLog?.isStreaming}`
+    );
+  
+    set((state) => {
+      const newMessagesMap = new Map(state.messages);
+      newMessagesMap.set(message.id, message); // Ensure a new map is created and the message is set
+      return {
+        messages: newMessagesMap,
+      };
+    });
   },
   setAbortController(ac: AbortController | null) {
     console.log("[STORE] setAbortController called. New AC:", !!ac);
@@ -136,7 +148,9 @@ export async function sendMessage(
     isStreaming: true,
   };
   useStore.getState().appendMessage(assistantMessage);
-  console.log("[STORE] Appended placeholder assistant message. ID:", assistantMessageId);
+  console.log(`[STORE sendMessage] Appended placeholder assistant. ID: ${assistantMessageId}. Current store message state:`, 
+    JSON.stringify(useStore.getState().messages.get(assistantMessageId))
+  );
 
   const abortController = new AbortController();
   useStore.getState().setAbortController(abortController);
@@ -160,6 +174,11 @@ export async function sendMessage(
       if (currentAssistantMsg) {
         const updatedMsg = mergeMessage(currentAssistantMsg, eventForUIMerge);
         useStore.getState().updateMessage(updatedMsg);
+        if (updatedMsg.role === 'assistant') {
+          console.log(`[STORE sendMessage LOOP] AFTER updateMessage call for assistant ID ${assistantMessageId}. Current store message state:`,
+            JSON.stringify(useStore.getState().messages.get(assistantMessageId))
+          );
+        }
       } else {
         console.warn("[STORE] Could not find assistant message to update. ID:", assistantMessageId);
       }
@@ -186,8 +205,10 @@ export async function sendMessage(
   } finally {
     console.log("[STORE] sendMessage finally block. Message ID:", assistantMessageId, "Aborted:", abortController.signal.aborted, "Current AC in store matches:", useStore.getState().currentAbortController === abortController);
     if (!abortController.signal.aborted || useStore.getState().currentAbortController === abortController) {
-        useStore.setState({ responding: false, currentAbortController: null });
-        console.log("[STORE] Set responding to false in finally block.");
+      useStore.setState({ responding: false, currentAbortController: null });
+      console.log(`[STORE sendMessage FINALLY] Set responding to false. Final assistant message state for ID ${assistantMessageId}:`, 
+        JSON.stringify(useStore.getState().messages.get(assistantMessageId))
+      );
     }
   }
 }
