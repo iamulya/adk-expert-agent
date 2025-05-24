@@ -24,7 +24,7 @@ from .config import DEFAULT_MODEL_NAME, PRO_MODEL_NAME
 from .callbacks import log_prompt_before_model_call
 from .sequential_issue_processor import github_issue_processing_agent, GitHubIssueProcessingInput, SequentialProcessorFinalOutput
 from .document_generator_agent import document_generator_agent, DocumentGeneratorAgentToolInput
-from .mermaid_tool import mermaid_gcs_tool_instance # Import the new tool
+from .mermaid_tool import GCS_LINK_STATE_KEY, mermaid_gcs_tool_instance # Import the new tool
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -110,19 +110,33 @@ Follow these steps precisely:
 """
     return instruction
 
+async def diagram_generator_after_agent_cb(callback_context: CallbackContext) -> genai_types.Content | None:
+    """
+    This callback runs after DiagramGeneratorAgent has finished its internal processing.
+    It retrieves the GCS link stored by its tool and returns it as the agent's final output.
+    """
+    gcs_link = callback_context.state.get(GCS_LINK_STATE_KEY)
+    if gcs_link:
+        logger.info(f"DiagramGeneratorAgent (after_agent_callback): Returning GCS link: {gcs_link}")
+        # This Content will be the final output of DiagramGeneratorAgent
+        return genai_types.Content(parts=[genai_types.Part(text=str(gcs_link))])
+    logger.warning("DiagramGeneratorAgent (after_agent_callback): GCS link not found in state.")
+    return genai_types.Content(parts=[genai_types.Part(text="Error: Could not generate diagram link.")])
+
 diagram_generator_agent = ADKAgent(
     name="mermaid_diagram_orchestrator_agent",
     model=Gemini(model=PRO_MODEL_NAME),
     instruction=diagram_generator_agent_instruction_provider,
     tools=[
-        AgentTool(agent=mermaid_syntax_verifier_agent),
-        mermaid_gcs_tool_instance,
+        AgentTool(agent=mermaid_syntax_verifier_agent), # Output is raw mermaid string
+        mermaid_gcs_tool_instance, # Output is URL string
     ],
-    input_schema=DiagramGeneratorAgentToolInput, # Schema for when this agent is called as a tool
-    disallow_transfer_to_parent=True, # This agent is a specialist
+    input_schema=DiagramGeneratorAgentToolInput, 
+    disallow_transfer_to_parent=True, 
     disallow_transfer_to_peers=True,
     before_model_callback=log_prompt_before_model_call,
-    generate_content_config=genai_types.GenerateContentConfig(temperature=0.1, top_p=0.7)
+    after_agent_callback=diagram_generator_after_agent_cb,
+    generate_content_config=genai_types.GenerateContentConfig(temperature=0.0) # More deterministic
 )
 
 
@@ -172,9 +186,15 @@ async def root_agent_after_tool_callback(
 
     elif tool.name == diagram_generator_agent.name: 
         logger.info(f"RootAgent (after_tool_callback): Received response from '{diagram_generator_agent.name}': {str(tool_response)[:200]}")
-        # The response from diagram_generator_agent is the signed URL or an error message, should not be summarized.
-        #tool_context.actions.skip_summarization = True
-        return genai_types.Content(parts=[genai_types.Part(text=str(tool_response))])
+        # tool_response should be the URL string (or error string) from diagram_generator_agent.
+        if isinstance(tool_response, str) and tool_response.strip():
+            tool_context.actions.skip_summarization = True # For root_agent's LLM
+            return genai_types.Content(parts=[genai_types.Part(text=tool_response)])
+        else:
+            error_msg = f"Error: Diagram generation agent returned an unexpected or empty response: {str(tool_response)[:100]}"
+            logger.error(f"RootAgent: {error_msg}")
+            tool_context.actions.skip_summarization = True # Still skip, and return the error directly
+            return genai_types.Content(parts=[genai_types.Part(text=error_msg)])
 
     elif tool.name == "prepare_document_content_tool":
         logger.info(f"RootAgent (after_tool_callback): 'prepare_document_content_tool' completed. Output from tool: {str(tool_response)[:200]}")

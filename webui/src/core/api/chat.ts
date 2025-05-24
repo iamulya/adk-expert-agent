@@ -64,6 +64,14 @@ export async function* postToRunSseAndStream(
     streaming: false, // Keep streaming true for delta events
   };
 
+  const requestPayloadForRunSsev05 = {
+    app_name: ADK_APP_NAME,
+    user_id: ADK_USER_ID,
+    session_id: adkSessionId,
+    new_message: newMessagePayloadForRunSse,
+    streaming: false, // Keep streaming true for delta events
+  };
+
   if (env.NEXT_PUBLIC_MOCK_API) {
     console.log("[MOCK API CHAT] postToRunSseAndStream called for session:", adkSessionId);
     const mockResponses = [
@@ -100,7 +108,7 @@ export async function* postToRunSseAndStream(
 
   const sseStream = fetchStream(url, {
     method: "POST",
-    body: JSON.stringify(requestPayloadForRunSse),
+    body: JSON.stringify(requestPayloadForRunSsev05),
     headers: {
       "Content-Type": "application/json",
       "Accept": "text/event-stream",
@@ -157,7 +165,7 @@ export async function* postToRunSseAndStream(
                   // Check the ADK-specific 'is_final_response' flag as per prompt requirement
                   // This flag should ideally be sent by ADK on the part containing the function_response
                   // when that function_response is part of the agent's final utterance to the user.
-                  if ((parsedEventData.actions && parsedEventData.actions.skipSummarization) || parsedEventData.isFinalResponse) {
+                  if ((parsedEventData.actions && (parsedEventData.actions.skipSummarization || parsedEventData.actions.skip_summarization)) || parsedEventData.isFinalResponse) {
                       isAgentTurnCompletelyFinal = true; // This is the key condition from the prompt
                       if (adkPart.functionResponse.response && adkPart.functionResponse.response.result && adkPart.functionResponse.response.result.parts.length > 0) {
                           const adkFuncResponsePart = adkPart.functionResponse.response.result.parts[0]; 
@@ -191,6 +199,11 @@ export async function* postToRunSseAndStream(
                   // then the agent's turn is considered final.
                   isAgentTurnCompletelyFinal = true;
               }
+          }
+
+          if(parsedEventData.error && parsedEventData.error.indexOf("500 INTERNAL") !== -1) {
+            uiMessageText = "The model encountered an internal error. Please try again later.";
+            console.error("[API CHAT] Internal Server Error in ADK response:", parsedEventData.error);
           }
           
           // Yield to UI store if there's text to display or if it's a final signal (even if empty)

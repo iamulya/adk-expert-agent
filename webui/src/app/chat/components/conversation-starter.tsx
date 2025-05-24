@@ -6,7 +6,7 @@ const questions = [
   "How do I set up a new ADK agent?",
   "Explain the AgentTool in ADK.",
   "Can you help with GitHub issue #123 in google/adk-python?",
-  "Generate a mermaid diagram for a simple client-server architecture.",
+  "Show in a sequence diagram how a user request is handled by ADK",
   "Create a PDF document about ADK tools."
 ];
 

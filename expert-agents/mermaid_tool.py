@@ -15,6 +15,7 @@ from google.auth.transport.requests import Request
 from google import auth as google_auth
 import google.auth.exceptions
 
+from google.adk.sessions.state import State # For namespacing
 from google.adk.tools import BaseTool, ToolContext
 import google.genai.types as genai_types
 
@@ -27,6 +28,7 @@ from .config import (
 )
 
 logger = logging.getLogger(__name__)
+GCS_LINK_STATE_KEY = State.TEMP_PREFIX + "gcs_link_for_diagram" # Temporary state key
 
 class MermaidToPngAndUploadTool(BaseTool):
     def __init__(self):
@@ -164,7 +166,15 @@ class MermaidToPngAndUploadTool(BaseTool):
                         credentials=impersonated_target_credentials,
                     )
                     logger.info(f"Generated signed URL: {signed_url}")
-                    return f"Diagram PNG generated and saved to Google Cloud Storage. Download (link expires in {SIGNED_URL_EXPIRATION_SECONDS // 60} mins): {signed_url}"
+                    output = f"Diagram PNG generated and saved to Google Cloud Storage. Download (link expires in {SIGNED_URL_EXPIRATION_SECONDS // 60} mins): {signed_url}"
+                    # Save the signed URL in the tool context state for later retrieval
+                    if tool_context:
+                        tool_context.state[GCS_LINK_STATE_KEY] = output
+                        logger.info(f"Saved signed URL to tool context state under key: {GCS_LINK_STATE_KEY}")
+
+                        # This tool's output itself doesn't need summarization BY DiagramGeneratorAgent's LLM
+                        tool_context.actions.skip_summarization = True
+                    return output
 
                 except google.auth.exceptions.RefreshError as refresh_err: # Specific exception
                     logger.error(f"Error refreshing impersonated credentials for Mermaid: {refresh_err}. Check SA '{GCS_SIGNED_URL_SA_EMAIL}'.", exc_info=True)
