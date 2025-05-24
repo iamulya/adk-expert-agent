@@ -12,6 +12,7 @@ import uuid
 import datetime
 
 from google.cloud import secretmanager, storage
+from google.adk.sessions.state import State 
 from google.adk.tools import BaseTool, ToolContext
 from google.genai import types as genai_types # For FunctionDeclaration
 from browser_use import Agent as BrowserUseAgent
@@ -46,6 +47,8 @@ _GITHUB_PAT = None
 
 MARP_CLI_COMMAND = "marp"
 GENERATED_DOCS_SUBDIR = "generated_documents_from_adk_agent" # For local fallback
+
+DOC_LINK_STATE_KEY = State.TEMP_PREFIX + "generated_document_signed_url" # Key to store signed URL in tool context state
 
 def get_github_pat_from_secret_manager() -> str:
     global _GITHUB_PAT 
@@ -136,7 +139,15 @@ async def _upload_to_gcs_and_get_signed_url(
                     credentials=impersonated_target_credentials,
                 )
                 logger.info(f"Generated GCS signed URL: {signed_url}")
-                return f"Document generated and saved to Google Cloud Storage. Download (link expires in {SIGNED_URL_EXPIRATION_SECONDS // 60} mins): {signed_url}"
+                output = f"Document generated and saved to Google Cloud Storage. Download (link expires in {SIGNED_URL_EXPIRATION_SECONDS // 60} mins): {signed_url}"
+                # Save the signed URL in the tool context state for later retrieval
+                if tool_context:
+                    tool_context.state[DOC_LINK_STATE_KEY] = output
+                    logger.info(f"Saved signed URL to tool context state under key: {DOC_LINK_STATE_KEY}")
+
+                    # This tool's output itself doesn't need summarization BY DiagramGeneratorAgent's LLM
+                    tool_context.actions.skip_summarization = True
+                return output
             else:
                 logger.warning("GCS_SIGNED_URL_SA_EMAIL not configured. Returning public GCS path instead of signed URL.")
                 public_url = f"https://storage.googleapis.com/{GCS_BUCKET_NAME}/{gcs_object_name}"

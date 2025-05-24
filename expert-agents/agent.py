@@ -180,9 +180,15 @@ async def root_agent_after_tool_callback(
 
     elif tool.name == document_generator_agent.name:
         logger.info(f"RootAgent (after_tool_callback): Received response from '{document_generator_agent.name}': {str(tool_response)[:200]}")
-        # Assuming document_generator_agent's output (a URL or error) should also not be summarized.
-        #tool_context.actions.skip_summarization = True
-        return genai_types.Content(parts=[genai_types.Part(text=str(tool_response))])
+        # tool_response should be the URL string (or error string) from diagram_generator_agent.
+        if isinstance(tool_response, str) and tool_response.strip():
+            tool_context.actions.skip_summarization = True # For root_agent's LLM
+            return genai_types.Content(parts=[genai_types.Part(text=tool_response)])
+        else:
+            error_msg = f"Error: Document generation agent returned an unexpected or empty response: {str(tool_response)[:100]}"
+            logger.error(f"RootAgent: {error_msg}")
+            tool_context.actions.skip_summarization = True # Still skip, and return the error directly
+            return genai_types.Content(parts=[genai_types.Part(text=error_msg)])
 
     elif tool.name == diagram_generator_agent.name: 
         logger.info(f"RootAgent (after_tool_callback): Received response from '{diagram_generator_agent.name}': {str(tool_response)[:200]}")
@@ -373,7 +379,7 @@ root_agent_tools = [
 
 root_agent = ADKAgent(
     name="adk_expert_orchestrator",
-    model=Gemini(model=DEFAULT_MODEL_NAME),
+    model=Gemini(model=PRO_MODEL_NAME),
     instruction=root_agent_instruction_provider,
     tools=root_agent_tools,
     before_model_callback=log_prompt_before_model_call, 

@@ -5,6 +5,7 @@ import json
 from typing import Literal, Dict, Any
 
 from google.adk.agents import Agent as LlmAgent
+from google.adk.agents.callback_context import CallbackContext
 from google.adk.models import Gemini
 from google.adk.tools import FunctionTool
 from google.adk.agents.readonly_context import ReadonlyContext
@@ -12,6 +13,7 @@ from google.genai import types as genai_types
 from pydantic import BaseModel, Field
 
 from .tools import (
+    DOC_LINK_STATE_KEY,
     generate_pdf_from_markdown_with_gcs,
     generate_html_slides_from_markdown_with_gcs,
     generate_pptx_slides_from_markdown_with_gcs
@@ -91,6 +93,18 @@ def document_generator_instruction_provider(context: ReadonlyContext) -> str:
         logger.error(f"DocumentGeneratorAgent: Error processing input '{input_json_str[:200]}': {e}", exc_info=True)
         return f"Error: Could not parse the input for document generation. Expected JSON with 'markdown_content', 'document_type', 'output_filename'. Received: {input_json_str[:100]}. Error: {e}"
 
+async def document_generator_after_agent_cb(callback_context: CallbackContext) -> genai_types.Content | None:
+    """
+    This callback runs after DocumentGeneratorAgent has finished its internal processing.
+    It retrieves the GCS link stored by its tool and returns it as the agent's final output.
+    """
+    gcs_link = callback_context.state.get(DOC_LINK_STATE_KEY)
+    if gcs_link:
+        logger.info(f"DocumentGeneratorAgent (after_agent_callback): Returning GCS link: {gcs_link}")
+        # This Content will be the final output of DocumentGeneratorAgent
+        return genai_types.Content(parts=[genai_types.Part(text=str(gcs_link))])
+    logger.warning("DocumentGeneratorAgent (after_agent_callback): GCS link not found in state.")
+    return genai_types.Content(parts=[genai_types.Part(text="Error: Could not generate diagram link.")])
 
 document_generator_agent = LlmAgent(
     name="document_creation_specialist_agent",
@@ -106,5 +120,6 @@ document_generator_agent = LlmAgent(
     disallow_transfer_to_peers=True,
     input_schema=DocumentGeneratorAgentToolInput, # Schema for when *this agent* is called as a tool
     before_model_callback=log_prompt_before_model_call,
+    after_agent_callback=document_generator_after_agent_cb,
     generate_content_config=genai_types.GenerateContentConfig(temperature=0.0)
 )
