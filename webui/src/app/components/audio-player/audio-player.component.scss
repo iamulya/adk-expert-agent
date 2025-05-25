@@ -1,0 +1,41 @@
+/* Styles for the main container of the audio player */
+.audio-player-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 15px;
+  background-color: #f0f0f0;
+  border-radius: 8px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  margin: 20px auto;
+  max-width: 350px;
+}
+
+/* Styles for the audio element itself */
+audio {
+  outline: none;
+  border-radius: 5px;
+  width: 350px;
+}
+
+/* Optional: Styles for custom controls if you decide to use them */
+.custom-controls {
+  margin-top: 10px;
+  display: flex;
+  gap: 10px;
+}
+
+.custom-controls button {
+  padding: 8px 15px;
+  border: none;
+  border-radius: 5px;
+  background-color: #007bff;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s ease;
+}
+
+.custom-controls button:hover {
+  background-color: #0056b3;
+}

@@ -1,0 +1,66 @@
+.close-button {
+  position: absolute;
+  top: 5px;
+  right: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
+  color: #666; /* Icon color */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10; /* Ensure button is clickable */
+  margin-bottom:15px;
+
+  &:hover {
+    background-color: #f0f0f0;
+    color: #333;
+  }
+
+  svg {
+    width: 24px;
+    height: 24px;
+    fill: currentColor; /* Use current color for SVG fill */
+  }
+}
+
+.image-wrapper {
+  flex-grow: 1; /* Allow image wrapper to take available space */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: auto; /* Allow scrolling if image is larger than dialog */
+}
+
+.image-wrapper img,
+.image-wrapper .svg-container {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain; /* Ensure image fits within bounds without cropping */
+  border-radius: 8px; /* Rounded corners for the image */
+}
+
+.no-image-placeholder {
+  color: #888;
+  font-style: italic;
+  text-align: center;
+  padding: 20px;
+}
+
+@media (max-width: 1768px) {
+  .dialog-content {
+    padding: 15px;
+    border-radius: 8px;
+    max-width: 195vw;
+    max-height: 195vh;
+  }
+
+  .close-button {
+    top: 5px;
+    right: 5px;
+    padding: 5px;
+  }
+}

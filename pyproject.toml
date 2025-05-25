@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "ADK Expert Bot using browser-use"
 requires-python = ">=3.11"
 dependencies = [
-    "google-adk==0.5.0",
+    "google-adk==1.0.0",
     "browser-use", # Keep if other parts still use it
     "langchain-google-genai",
     "google-cloud-secret-manager",

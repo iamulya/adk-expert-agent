@@ -1,0 +1,154 @@
+<!--
+ Copyright 2025 Google LLC
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+
+<div class="eval-container">
+    <div class="eval-set-actions" *ngIf="selectedEvalSet == ''">
+        <div>All eval sets</div>
+        <mat-icon style="cursor: pointer;" (click)="openNewEvalSetDialog()">add</mat-icon>
+    </div>
+    <div *ngIf="evalsets.length == 0">
+        <div class="empty-eval-info">
+            <div class="info-title">
+                Create New Evaluation Set
+            </div>
+            <div class="info-detail">
+                An evaluation set is a curated collection of evaluation cases, where each case includes input-output examples for assessing agent performance.
+            </div>
+            <div class="info-create" (click)="openNewEvalSetDialog()">
+                Create Evaluation Set
+            </div>
+        </div>
+    </div>
+    <div *ngIf="evalsets.length > 0 && this.selectedEvalSet == ''">
+        <div *ngFor="let set of evalsets" class="eval-set-row" (click)="selectEvalSet(set)">
+            <div style="display: flex;">
+                <span class="material-symbols-outlined" style="margin-right:10px; padding-top: 16px;">folder</span>
+                <div style="font-family: Roboto;font-size: 14px; padding: 16px; padding-top: 20px;">{{set}}</div>
+            </div>
+            <div>
+                <mat-icon style="padding-top: 20px; color:#9AA0A6;">chevron_right</mat-icon>
+            </div>
+        </div>
+
+    </div>
+    <div *ngIf="selectedEvalSet != ''">
+        <div style="display: flex;">
+            <mat-icon style="color:white;cursor: pointer;" (click)="clearSelectedEvalSet()">chevron_left</mat-icon>
+            <div style="color:#9AA0A6; padding-top:2px;cursor: pointer;" (click)="clearSelectedEvalSet()">
+                {{selectedEvalSet}}
+            </div>
+        </div>
+
+        <div *ngIf="evalCases.length > 0 && !evalRunning">
+            <div *ngIf="!showEvalHistory">
+                <div class="evaluation-tab-header">
+                    <button class="run-eval-btn" (click)="runEval()">Run Evaluation</button>
+                    <mat-icon class="evaluation-history-icon" (click)="toggleEvalHistoryButton()">history</mat-icon>
+                </div>
+                <div class="mat-table-container" style="margin-top:16px;">
+                    <table mat-table [dataSource]="dataSource">
+                        <ng-container matColumnDef="select">
+                            <th mat-header-cell *matHeaderCellDef>
+                                <mat-checkbox (change)="$event ? toggleAllRows() : null"
+                                            [checked]="selection.hasValue() && isAllSelected()"
+                                            [indeterminate]="selection.hasValue() && !isAllSelected()">
+                                </mat-checkbox>
+                            </th>
+                            <td mat-cell *matCellDef="let row">
+                                <mat-checkbox (click)="$event.stopPropagation()"
+                                            (change)="$event ? selection.toggle(row) : null"
+                                            [checked]="selection.isSelected(row)">
+                                </mat-checkbox>
+                            </td>
+                        </ng-container>
+                        <!-- Column Definitions -->
+                        <ng-container matColumnDef="evalId">
+                        <th mat-header-cell *matHeaderCellDef> Case ID </th>
+                        <td mat-cell *matCellDef="let element"> {{element}} </td>
+                        </ng-container>
+
+                        <ng-container matColumnDef="finalEvalStatus">
+                        <th mat-header-cell *matHeaderCellDef> Result </th>
+                        <td mat-cell *matCellDef="let element">
+                            <button *ngIf="getEvalResultForCase(element)"
+                            [ngClass]="getEvalResultForCase(element) == 1 ? 'result-btn pass': 'result-btn fail'" (click)="getSession(element)">
+                                <span class="material-symbols-outlined">
+                                    {{ getEvalResultForCase(element) == 1 ? "check": "close" }}
+                                </span>
+                                <div style="padding-top: 4px;">{{getEvalResultForCase(element) == 1 ? "Pass": "Fail"}} </div>
+                            </button>
+                        </td>
+                        </ng-container>
+                        <!-- Table Rows -->
+                        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+                        <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+                    </table>
+                </div>
+            </div>
+
+            <div *ngIf="showEvalHistory">
+                <div *ngFor="let evalResult of getEvalHistoryOfCurrentSetSorted()">
+                    <div class="status-card">
+                        <div class="status-card__overview">
+                            <div class="status-card__info">
+                                <div class="status-card__timestamp">{{ formatTimestamp(evalResult.timestamp) }}</div>
+                                <div class="status-card__summary">
+                                    <span class="status-card__passed">{{ getPassCountForCurrentResult(evalResult.evaluationResults.evaluationResults) }} Passed</span>
+                                    <div *ngIf="getFailCountForCurrentResult(evalResult.evaluationResults.evaluationResults) > 0">
+                                        <span class="status-card__separator">|</span>
+                                        <span class="status-card__failed">{{ getFailCountForCurrentResult(evalResult.evaluationResults.evaluationResults) }} Failed</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="status-card__action">
+                                <mat-icon (click)="toggleHistoryStatusCard(evalResult.timestamp)">{{ getEvaluationStatusCardActionButtonIcon(evalResult.timestamp) }}</mat-icon>
+                            </div>
+                        </div>
+                        <div class="status-card__history-cases" *ngIf="isEvaluationStatusCardToggled(evalResult.timestamp)">
+                            <div *ngFor="let evalResult of generateHistoryEvaluationDatasource(evalResult.timestamp)">
+                                <div class="status-card__history-case">
+                                    <span> {{ evalResult.evalId }} </span>
+
+                                    <button
+                                    [ngClass]="evalResult.finalEvalStatus == 1 ? 'result-btn pass': 'result-btn fail'" (click)="getHistorySession(evalResult)">
+                                        <span class="material-symbols-outlined">
+                                            {{ evalResult.finalEvalStatus == 1 ? "check": "close" }}
+                                        </span>
+                                        <div style="padding-top: 4px;">{{ evalResult.finalEvalStatus == 1 ? "PASS": "FAIL"}} </div>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button class="save-session-btn" (click)="openNewEvalCaseDialog()" *ngIf="!evalRunning && !showEvalHistory">
+            <div class="save-session-btn-detail">
+                <mat-icon>add</mat-icon>
+                <div class="save-session-btn-text">
+                    Add current session to {{selectedEvalSet}}
+                </div>
+            </div>
+        </button>
+
+        <div *ngIf="evalRunning">
+            <mat-spinner class="eval-spinner" [diameter]="28" [strokeWidth]="3"></mat-spinner>
+        </div>
+    </div>
+</div>
+
