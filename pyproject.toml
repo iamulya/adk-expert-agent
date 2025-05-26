@@ -2,7 +2,7 @@
 name = "my-adk-expert-agent"
 version = "0.1.0"
 description = "ADK Expert Bot using browser-use"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "google-adk==1.0.0",
     "browser-use", # Keep if other parts still use it

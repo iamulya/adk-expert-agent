@@ -16,6 +16,7 @@ from google import auth as google_auth
 import google.auth.exceptions
 
 from google.adk.sessions.state import State # For namespacing
+
 from google.adk.tools import BaseTool, ToolContext
 import google.genai.types as genai_types
 
@@ -29,6 +30,8 @@ from .config import (
 
 logger = logging.getLogger(__name__)
 GCS_LINK_STATE_KEY = State.TEMP_PREFIX + "gcs_link_for_diagram" # Temporary state key
+
+PUPPETEER_CONFIG_PATH = os.getenv("PUPPETEER_CONFIG_PATH", "/app/puppeteer-config.json");
 
 class MermaidToPngAndUploadTool(BaseTool):
     def __init__(self):
@@ -92,9 +95,12 @@ class MermaidToPngAndUploadTool(BaseTool):
             # Let's assume mmdc can overwrite or create if not present.
             # The tempfile is created, so mmdc can write to png_file_path.
 
-            logger.info(f"Running mmdc: {MERMAID_CLI_PATH} -i {mmd_file_path} -o {png_file_path}")
+            logger.info(f"Running mmdc: {MERMAID_CLI_PATH} -p {PUPPETEER_CONFIG_PATH} -i {mmd_file_path} -o {png_file_path}")
             process = await asyncio.create_subprocess_exec(
-                MERMAID_CLI_PATH, "-i", mmd_file_path, "-o", png_file_path,
+                MERMAID_CLI_PATH,
+                "-p", PUPPETEER_CONFIG_PATH,
+                "-i", mmd_file_path,
+                "-o", png_file_path,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE
             )
             stdout, stderr = await process.communicate()

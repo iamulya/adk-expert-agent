@@ -245,7 +245,7 @@ You have received structured data from the 'prepare_document_content_tool'.
 The data is: {json.dumps(prepared_content_data)}
 Your task is to call the tool named '{document_generator_agent.name}'.
 This tool expects arguments conforming to this schema:
-{DocumentGeneratorAgentToolInput.model_json_schema(indent=2)}
+{DocumentGeneratorAgentToolInput.model_json_schema()}
 Based on the data received from 'prepare_document_content_tool', you MUST call the '{document_generator_agent.name}' tool with the correctly mapped arguments.
 Your response should ONLY be the function call. Do not include any other text.
 """
