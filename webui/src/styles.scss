@@ -1,0 +1,67 @@
+/**
+ * Copyright 2025 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* You can add global styles to this file, and also import other style files */
+@use '@angular/material' as mat;
+@use '../theme-colors.scss' as theme;
+
+html {
+  color-scheme: dark;
+  @include mat.theme((
+    color: theme.$primary-palette,
+    density: 0
+  ));
+}
+
+html {
+  font-family: 'Google Sans', 'Helvetica Neue', sans-serif !important;
+} 
+
+body {
+    height: 100vh;
+    margin: 0;
+}
+
+markdown p {
+  margin-block-start: 0.5em;
+  margin-block-end: 0.5em;
+}
+
+:root {
+  --mat-sys-primary: black;
+  --mdc-checkbox-selected-icon-color: white;
+  --mat-sys-background: #131314;
+  // tab variable overrides
+  --mat-tab-header-active-label-text-color: #8AB4F8;
+  --mat-tab-header-active-hover-label-text-color: #8AB4F8;
+  --mat-tab-header-active-focus-label-text-color: #8AB4F8;
+  --mat-tab-header-label-text-weight: 500;
+  --mdc-text-button-label-text-color: #89b4f8;
+}
+
+:root {
+  @include mat.dialog-overrides((
+    container-color: #2b2b2f,
+    subhead-color: white,
+  ));
+}
+
+:root {
+  @include mat.progress-spinner-overrides((
+    active-indicator-color: #a8c7fa,
+    size: 80
+  ));
+}

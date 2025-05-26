@@ -1,0 +1,30 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug ADK Web App",
+            "type": "python",
+            "request": "launch",
+            // The 'adk' command is an entry point for the google.adk.cli module.
+            // Running it as a module is generally more robust.
+            "module": "google.adk.cli",
+            "args": [
+                "web",
+                "--log_level",
+                "debug",
+                "."
+            ],
+            "cwd": "${workspaceFolder}", // Ensures '.' in "adk web ." refers to your project root
+            "envFile": "${workspaceFolder}/expert-agents/.env", // Loads your .env file
+            "env": {
+                // Ensures your custom agent modules are discoverable if not installed in editable mode
+                // or if there are pathing issues. CWD usually handles this for top-level imports.
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "console": "integratedTerminal",
+            // Set to false if you need to step into the ADK library code itself.
+            // Set to true to only debug your agent code.
+            "justMyCode": false
+        }
+    ]
+}

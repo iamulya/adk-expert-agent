@@ -1,0 +1,55 @@
+.starter-questions-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 10px;
+    margin: 0 auto 20px auto; /* Centered with bottom margin */
+    max-width: 800px; /* Max width for the component */
+    background-color: #1e1e1e; /* Slightly different background */
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+  
+  .starter-header {
+    margin-bottom: 15px;
+    text-align: center;
+  }
+  
+  .header-text {
+    font-size: 1.1em; /* Slightly larger */
+    font-weight: 500;
+    color: #c4c7c5; /* Lighter grey for text */
+  }
+  
+  .questions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); /* Responsive columns */
+    gap: 12px; /* Spacing between buttons */
+    width: 100%;
+  }
+  
+  .starter-question-button {
+    background-color: #2a2a2e; /* Darker button background */
+    color: #d0d0d0; /* Lighter text for buttons */
+    border: 1px solid #4a4a50; /* Subtle border */
+    border-radius: 8px; /* Softer corners */
+    padding: 12px 18px;
+    text-align: left;
+    font-size: 0.95em;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+    display: flex; /* For potential icon alignment */
+    align-items: center;
+    min-height: 50px; /* Ensure buttons have some min height */
+    line-height: 1.4; /* Better text readability */
+  
+    &:hover {
+      background-color: #38383c; /* Hover effect */
+      border-color: #6a6a70;
+    }
+  
+    &:focus {
+      outline: 2px solid #8ab4f8; /* Focus indicator */
+      outline-offset: 2px;
+    }
+  }

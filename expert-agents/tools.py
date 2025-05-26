@@ -5,16 +5,25 @@ import logging
 from typing import Any, Dict, Optional, override
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
+import subprocess
+import tempfile
+import shutil
+import uuid
+import datetime
 
-from google.cloud import secretmanager
+from google.cloud import secretmanager, storage
+from google.adk.sessions.state import State 
 from google.adk.tools import BaseTool, ToolContext
 from google.genai import types as genai_types # For FunctionDeclaration
 from browser_use import Agent as BrowserUseAgent
 from browser_use import Browser, BrowserConfig, BrowserContextConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
-from .config import DEFAULT_MODEL_NAME
+from .config import (
+    DEFAULT_MODEL_NAME, API_KEY,
+    GCS_BUCKET_NAME, GCS_PROJECT_ID_FOR_BUCKET,
+    GCS_SIGNED_URL_SA_EMAIL, SIGNED_URL_EXPIRATION_SECONDS
+)
 from .context_loader import get_escaped_adk_context_for_llm
-from .config import API_KEY
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -36,18 +45,22 @@ BOILERPLATE_STRINGS_TO_REMOVE = [
 
 _GITHUB_PAT = None 
 
+MARP_CLI_COMMAND = "marp"
+GENERATED_DOCS_SUBDIR = "generated_documents_from_adk_agent" # For local fallback
+
+DOC_LINK_STATE_KEY = State.TEMP_PREFIX + "generated_document_signed_url" # Key to store signed URL in tool context state
 
 def get_github_pat_from_secret_manager() -> str:
     global _GITHUB_PAT 
     if _GITHUB_PAT: 
         return _GITHUB_PAT 
-    project_id = os.getenv("GCP_PROJECT_ID")
+    project_number = os.getenv("GCP_PROJECT_NUMBER")
     secret_id = os.getenv("GITHUB_API_PAT_SECRET_ID")
     version_id = os.getenv("GITHUB_API_PAT_SECRET_VERSION", "1") 
-    if not project_id or not secret_id:
-        raise ValueError("GCP_PROJECT_ID and GITHUB_API_PAT_SECRET_ID must be set in .env")
+    if not project_number or not secret_id:
+        raise ValueError("GCP_PROJECT_NUMBER and GITHUB_API_PAT_SECRET_ID must be set in .env")
     client = secretmanager.SecretManagerServiceClient()
-    name = f"projects/{project_id}/secrets/{secret_id}/versions/{version_id}"
+    name = f"projects/{project_number}/secrets/{secret_id}/versions/{version_id}"
     print(f"Fetching GitHub PAT secret: {name}") 
     try:
         response = client.access_secret_version(name=name)
@@ -57,6 +70,195 @@ def get_github_pat_from_secret_manager() -> str:
     except Exception as e:
         print(f"Error fetching GitHub PAT from Secret Manager: {e}") 
         raise
+
+# --- Helper function to check for marp-cli ---
+def _check_marp_cli():
+    """Checks if marp-cli is installed and accessible."""
+    try:
+        subprocess.run([MARP_CLI_COMMAND, "--version"], check=True, capture_output=True)
+        logger.info(f"'{MARP_CLI_COMMAND}' found and working.")
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        logger.error(f"ERROR: '{MARP_CLI_COMMAND}' not found or not executable.")
+        return False
+
+# --- Common GCS Upload and Signed URL Logic ---
+async def _upload_to_gcs_and_get_signed_url(
+    local_file_path: str, 
+    gcs_object_name_base: str, # e.g., "adk_docs/session_xyz/my_report" (no extension)
+    content_type: str,
+    file_extension: str, # .pdf, .html, .pptx
+    tool_context: Optional[ToolContext] = None, # For ADK artifact fallback
+    markdown_content_for_fallback: Optional[str] = None
+) -> str:
+    """
+    Uploads a file to GCS and returns a signed URL. Falls back to ADK artifacts if GCS fails.
+    """
+    session_id_for_path = tool_context._invocation_context.session.id if tool_context and hasattr(tool_context, '_invocation_context') else "unknown_session"
+    unique_id = uuid.uuid4().hex[:8]
+    
+    # Ensure gcs_object_name_base does not have leading/trailing slashes from filename
+    gcs_object_name_base_cleaned = gcs_object_name_base.strip('/').replace(file_extension, '')
+
+    gcs_object_name = f"adk_generated_documents/{session_id_for_path}/{gcs_object_name_base_cleaned}_{unique_id}{file_extension}"
+    
+    # For ADK artifact fallback, use a simpler name structure
+    adk_artifact_filename = f"{os.path.basename(gcs_object_name_base_cleaned)}_{unique_id}{file_extension}"
+
+
+    if GCS_BUCKET_NAME and GCS_PROJECT_ID_FOR_BUCKET:
+        try:
+            logger.info(f"Attempting to save to GCS bucket '{GCS_BUCKET_NAME}' as object '{gcs_object_name}'")
+            storage_client = storage.Client(project=GCS_PROJECT_ID_FOR_BUCKET)
+            bucket = storage_client.bucket(GCS_BUCKET_NAME)
+            blob = bucket.blob(gcs_object_name)
+            
+            blob.upload_from_filename(local_file_path, content_type=content_type)
+            logger.info(f"File successfully uploaded to GCS: gs://{GCS_BUCKET_NAME}/{gcs_object_name}")
+
+            signed_url = "No signed URL generated if SA email is not set."
+            if GCS_SIGNED_URL_SA_EMAIL:
+                from google import auth
+                # Use ADC of the environment running the agent to impersonate
+                principal_credentials, _ = auth.default(
+                    scopes=['https://www.googleapis.com/auth/cloud-platform']
+                )
+
+                from google.auth import impersonated_credentials
+                impersonated_target_credentials = impersonated_credentials.Credentials(
+                        source_credentials=principal_credentials,
+                        target_principal=GCS_SIGNED_URL_SA_EMAIL,
+                        target_scopes=['https://www.googleapis.com/auth/devstorage.read_write'],
+                        lifetime=SIGNED_URL_EXPIRATION_SECONDS + 60 # Add a bit of buffer
+                    )
+                
+                signed_url = blob.generate_signed_url(
+                    version="v4",
+                    expiration=datetime.timedelta(seconds=SIGNED_URL_EXPIRATION_SECONDS),
+                    method="GET",
+                    credentials=impersonated_target_credentials,
+                )
+                logger.info(f"Generated GCS signed URL: {signed_url}")
+                output = f"Document generated and saved to Google Cloud Storage. Download (link expires in {SIGNED_URL_EXPIRATION_SECONDS // 60} mins): {signed_url}"
+                # Save the signed URL in the tool context state for later retrieval
+                if tool_context:
+                    tool_context.state[DOC_LINK_STATE_KEY] = output
+                    logger.info(f"Saved signed URL to tool context state under key: {DOC_LINK_STATE_KEY}")
+
+                    # This tool's output itself doesn't need summarization BY DiagramGeneratorAgent's LLM
+                    tool_context.actions.skip_summarization = True
+                return output
+            else:
+                logger.warning("GCS_SIGNED_URL_SA_EMAIL not configured. Returning public GCS path instead of signed URL.")
+                public_url = f"https://storage.googleapis.com/{GCS_BUCKET_NAME}/{gcs_object_name}"
+                # Note: This URL will only work if the object is publicly readable or the user has direct GCS access.
+                return f"Document generated and saved to Google Cloud Storage at: gs://{GCS_BUCKET_NAME}/{gcs_object_name} (Public URL if bucket/object is public: {public_url}). Signed URL generation skipped as service account for signing is not configured."
+
+        except Exception as e:
+            logger.error(f"Error during GCS storage or signed URL generation for {gcs_object_name}: {e}", exc_info=True)
+            if tool_context and markdown_content_for_fallback: # Fallback to ADK artifact
+                logger.warning("Falling back to ADK in-memory artifact service.")
+                # Save the source markdown as artifact for debugging, not the binary file directly.
+                # If you want to save the binary, read local_file_path and create Part from bytes.
+                await tool_context.save_artifact(adk_artifact_filename + ".md", genai_types.Part(text=markdown_content_for_fallback))
+                return f"Error saving to GCS. Source Markdown saved to ADK artifacts as: {adk_artifact_filename}.md. GCS Error: {str(e)}"
+            return f"Error saving to GCS: {str(e)}. Fallback to ADK artifact not possible without tool_context/markdown."
+    else: # GCS not configured, use ADK artifact service as fallback
+        if tool_context and markdown_content_for_fallback:
+            logger.warning("GCS bucket/project not configured. Saving source Markdown to ADK in-memory artifact service.")
+            await tool_context.save_artifact(adk_artifact_filename + ".md", genai_types.Part(text=markdown_content_for_fallback))
+            return f"GCS not configured. Source Markdown for {adk_artifact_filename} saved as ADK artifact: {adk_artifact_filename}.md."
+        logger.warning("GCS bucket/project not configured. Cannot save artifact as tool_context or markdown_content is missing.")
+        return "GCS not configured and could not save to ADK artifacts."
+
+# --- Marp + GCS Tool Functions ---
+async def _generate_with_marp_and_upload(
+    markdown_content: str, 
+    output_filename_base: str, # Base name without extension
+    marp_format_flag: str, # --pdf, --html, --pptx
+    gcs_content_type: str,
+    file_extension: str, # .pdf, .html, .pptx
+    tool_context: Optional[ToolContext] = None # Passed for ADK artifact fallback
+) -> str:
+    """Generic function to run Marp and upload to GCS."""
+    if not _check_marp_cli():
+        return "Error: marp-cli is not installed or accessible. Cannot generate document."
+
+    # Ensure local output directory exists for marp-cli
+    local_marp_output_dir = os.path.join(tempfile.gettempdir(), GENERATED_DOCS_SUBDIR)
+    os.makedirs(local_marp_output_dir, exist_ok=True)
+    
+    # Sanitize filename and ensure correct extension for local file
+    safe_local_filename = "".join(c if c.isalnum() or c in ('.', '_', '-') else '_' for c in output_filename_base)
+    local_output_path = os.path.join(local_marp_output_dir, safe_local_filename + file_extension)
+    
+    tmp_md_file_path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".md", encoding='utf-8') as tmp_md_file:
+            tmp_md_file.write(markdown_content)
+            tmp_md_file_path = tmp_md_file.name
+        
+        cmd = [MARP_CLI_COMMAND, tmp_md_file_path, marp_format_flag, "-o", local_output_path, "--allow-local-files"]
+        logger.info(f"Executing Marp command: {' '.join(cmd)}")
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')
+        
+        if os.path.exists(local_output_path):
+            logger.info(f"Marp generated file locally: {local_output_path}. Marp stdout: {result.stdout}")
+            # Now upload and get signed URL
+            return await _upload_to_gcs_and_get_signed_url(
+                local_file_path=local_output_path,
+                gcs_object_name_base=output_filename_base, # Pass base name for GCS path
+                content_type=gcs_content_type,
+                file_extension=file_extension,
+                tool_context=tool_context,
+                markdown_content_for_fallback=markdown_content
+            )
+        else:
+            logger.error(f"Marp file generation commanded, but output file '{local_output_path}' not found. Marp stdout: {result.stdout}. Stderr: {result.stderr}")
+            return f"Marp file generation commanded, but output file not found. Marp output: {result.stdout}. Error: {result.stderr}"
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error running marp-cli for {marp_format_flag}: {e.stderr}", exc_info=True)
+        return f"Error generating document with marp-cli: {e.stderr}"
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during {marp_format_flag} generation: {str(e)}", exc_info=True)
+        return f"An unexpected error occurred during document generation: {str(e)}"
+    finally:
+        if tmp_md_file_path and os.path.exists(tmp_md_file_path):
+            os.remove(tmp_md_file_path)
+        if 'local_output_path' in locals() and os.path.exists(local_output_path): # Clean up local Marp output
+             try:
+                os.remove(local_output_path)
+             except Exception as e_rem:
+                 logger.warning(f"Could not remove temporary local Marp file {local_output_path}: {e_rem}")
+
+
+async def generate_pdf_from_markdown_with_gcs(markdown_content: str, output_filename: str, tool_context: ToolContext) -> str:
+    """
+    Generates a PDF from Markdown, uploads to GCS, and returns a signed URL.
+    The output_filename should be the base name, e.g., 'my_report'.
+    """
+    return await _generate_with_marp_and_upload(
+        markdown_content, output_filename, "--pdf", "application/pdf", ".pdf", tool_context
+    )
+
+async def generate_html_slides_from_markdown_with_gcs(markdown_content: str, output_filename: str, tool_context: ToolContext) -> str:
+    """
+    Generates HTML slides from Markdown, uploads to GCS, and returns a signed URL.
+    The output_filename should be the base name, e.g., 'my_presentation'.
+    """
+    return await _generate_with_marp_and_upload(
+        markdown_content, output_filename, "--html", "text/html", ".html", tool_context
+    )
+
+async def generate_pptx_slides_from_markdown_with_gcs(markdown_content: str, output_filename: str, tool_context: ToolContext) -> str:
+    """
+    Generates PPTX slides from Markdown, uploads to GCS, and returns a signed URL.
+    The output_filename should be the base name, e.g., 'my_deck'.
+    """
+    return await _generate_with_marp_and_upload(
+        markdown_content, output_filename, "--pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation", ".pptx", tool_context
+    )
 
 class ConstructGitHubUrlToolInput(BaseModel):
     issue_number: str = Field(description="The GitHub issue number for 'google/adk-python'.")

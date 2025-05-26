@@ -1,0 +1,64 @@
+/**
+ * Copyright 2025 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+.session-wrapper {
+  padding-left: 25px;
+  padding-right: 25px;
+  color: #9AA0A6;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.session-item {
+  display: flex;
+  justify-content: space-between;
+  border: none;
+  background-color: #303030;
+  border-radius: 8px;
+  margin-bottom: 4px;
+  cursor: pointer;
+
+  &:hover {
+    background-color: #141414;
+  }
+  &.current {
+    background-color: #004a77;
+  }
+}
+
+.session-id {
+  color: #E8EAED;
+  font-family: monospace;
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 20px;
+  letter-spacing: 0.25px;
+}
+
+.session-date {
+  color: #9AA0A6;
+  font-family: Roboto;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 16px;
+  letter-spacing: 0.3px;
+}
+
+.session-info {
+  padding: 11px;
+}

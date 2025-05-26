@@ -1,0 +1,96 @@
+/**
+ * Copyright 2025 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+.trace-container {
+    width: 100%;
+    white-space: nowrap;
+    font-size: 12px;
+}
+
+
+.trace-label {
+    width: 400px;
+    color: #E3E3E3;
+    text-overflow: ellipsis;
+    font-family: "Google Sans";
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 500;
+    line-height: 20px;
+    letter-spacing: 0px;
+}
+
+.trace-bar-container {
+    width: 50vw; 
+    position: relative;
+    height: 16px;
+}
+
+.trace-bar {
+    position: absolute;
+    height: 18px;
+    background-color: #2F4D65;
+    border-radius: 4px;
+    padding-left: 4px;
+    overflow: hidden;
+    font-size: 11px;
+    line-height: 16px;
+    color: #8DABBF;
+    font-family: "Google Sans";
+}
+
+.trace-duration {
+    color: #888;
+    font-weight: normal;
+    margin-left: 4px;
+}
+
+.trace-row {
+    display: flex;
+    align-items: stretch; /* <-- stretch ensures full height */
+    position: relative;
+    height: 32px; /* Give rows a little more vertical space */
+  }
+  
+  .trace-indent {
+    display: flex;
+    flex-shrink: 0;
+    height: 100%; /* Make sure it stretches */
+  }
+  
+  .indent-connector {
+    width: 20px;
+    position: relative;
+    height: 100%;
+  }
+  
+  .vertical-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 9px;
+    width: 1px;
+    background-color: #ccc;
+  }
+  
+  .horizontal-line {
+    position: absolute;
+    top: 50%;
+    left: 9px;
+    width: 10px;
+    height: 1px;
+    background-color: #ccc;
+  }
+  
