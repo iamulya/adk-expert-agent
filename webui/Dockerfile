@@ -12,7 +12,7 @@ COPY webui/package.json webui/package-lock.json* ./
 
 # Install dependencies. `npm ci` is preferred for CI/CD for reproducible builds.
 # --legacy-peer-deps might be needed for some Angular versions/dependencies.
-RUN npm ci --legacy-peer-deps
+RUN npm install --legacy-peer-deps
 
 # Copy the rest of the webui source code and auxiliary files for this stage
 COPY webui/ ./
@@ -46,10 +46,6 @@ RUN chmod +x /entrypoint.sh
 
 # Expose port 80 for Nginx
 EXPOSE 80
-
-# Environment variable for the backend URL. This will be injected into runtime-config.json.
-# Default value is provided, but this should be overridden when running the container.
-ENV BACKEND_URL="http://expert-agent-backend:8000"
 
 # Set the entrypoint to our custom script
 ENTRYPOINT ["/entrypoint.sh"]

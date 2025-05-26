@@ -44,20 +44,8 @@ RUN pip install .
 # Copy the expert-agents application code into the container
 COPY expert-agents /app/expert-agents/
 
-# Define environment variables that the application needs (placeholders)
-ENV GCP_PROJECT_ID="your-gcp-project-id"
-ENV GCP_PROJECT_NUMBER="your-gcp-project-number"
-ENV GEMINI_API_KEY_SECRET_ID="your-gemini-api-key-secret-id"
-ENV GITHUB_API_PAT_SECRET_ID="your-github-pat-secret-id"
-ENV GCS_BUCKET_NAME_FOR_DOCS="your-gcs-bucket-name-for-docs"
-ENV GCS_PROJECT_ID_FOR_DOCS_BUCKET="your-gcs-project-id-for-docs-bucket"
-ENV GCS_SIGNED_URL_SA_EMAIL="your-sa-email-for-signing@your-project.iam.gserviceaccount.com"
-ENV SIGNED_URL_EXPIRATION_SECONDS="3600"
-# For Google Cloud authentication, consider mounting a service account key
-# ENV GOOGLE_APPLICATION_CREDENTIALS="/app/secrets/service-account-key.json"
-
 # Expose the port the ADK API server will run on
 EXPOSE 8000
 
 # Command to run the ADK API server
-CMD ["adk", "api_server", "--root_dir", ".", "--host", "0.0.0.0", "--port", "8000", "--allow_origins", "*"]
+CMD ["adk", "api_server", "--host", "0.0.0.0", "--port", "8000", "--allow_origins", "*", "."]
