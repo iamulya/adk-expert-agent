@@ -1,26 +1,22 @@
-# expert-agents/mermaid_tool.py
+# expert-agents/tools/mermaid_to_png_and_upload_tool.py
 import asyncio
 import datetime
 import logging
 import os
-import re # <--- ADD THIS IMPORT
+import re
 import subprocess
 import tempfile
 import uuid
 from typing import Dict
 
 from google.cloud import storage
-from google.oauth2 import service_account
-from google.auth.transport.requests import Request
-from google import auth as google_auth
-import google.auth.exceptions
+import google.auth.exceptions # No longer need google.oauth2.service_account or google.auth.transport.requests
 
-from google.adk.sessions.state import State # For namespacing
-
+from google.adk.sessions.state import State
 from google.adk.tools import BaseTool, ToolContext
 import google.genai.types as genai_types
 
-from .config import (
+from ..config import ( # Relative import
     GCS_BUCKET_NAME,
     GCS_PROJECT_ID_FOR_BUCKET,
     GCS_SIGNED_URL_SA_EMAIL,
@@ -29,9 +25,9 @@ from .config import (
 )
 
 logger = logging.getLogger(__name__)
-GCS_LINK_STATE_KEY = State.TEMP_PREFIX + "gcs_link_for_diagram" # Temporary state key
+GCS_LINK_STATE_KEY = State.TEMP_PREFIX + "gcs_link_for_diagram"
 
-PUPPETEER_CONFIG_PATH = os.getenv("PUPPETEER_CONFIG_PATH", "/app/puppeteer-config.json");
+PUPPETEER_CONFIG_PATH = os.getenv("PUPPETEER_CONFIG_PATH", "/app/puppeteer-config.json")
 
 class MermaidToPngAndUploadTool(BaseTool):
     def __init__(self):
@@ -61,39 +57,27 @@ class MermaidToPngAndUploadTool(BaseTool):
         if not mermaid_syntax_raw:
             return "Error: Mermaid syntax is required."
 
-        # Extract content from ```mermaid ... ``` block if present
-        match = re.search(r"```mermaid\s*([\s\S]+?)\s*```", mermaid_syntax_raw, re.DOTALL) # Now 're' is defined
+        match = re.search(r"```mermaid\s*([\s\S]+?)\s*```", mermaid_syntax_raw, re.DOTALL)
         if match:
             mermaid_syntax = match.group(1).strip()
         else:
-            mermaid_syntax = mermaid_syntax_raw.strip() # Assume raw syntax if no block
+            mermaid_syntax = mermaid_syntax_raw.strip()
 
         if not mermaid_syntax:
             return "Error: Extracted Mermaid syntax is empty."
 
-
         session_id = tool_context._invocation_context.session.id if tool_context and hasattr(tool_context, '_invocation_context') and hasattr(tool_context._invocation_context, 'session') else "unknown_session"
-
-
+        
         png_data = None
         mmd_file_path = None
         png_file_path = None
         try:
-            # Create a temporary file for mermaid syntax
             with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".mmd", encoding='utf-8') as mmd_file:
                 mmd_file.write(mermaid_syntax)
                 mmd_file_path = mmd_file.name
 
-            # Create a temporary file path for the PNG output
-            # We don't need to open it in write binary mode yet, mmdc will write to it.
             with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as png_temp_obj:
                 png_file_path = png_temp_obj.name
-            # mmdc needs the output file to exist, even if empty, or it might fail on some systems.
-            # However, some versions of mmdc might prefer the file not to exist or will overwrite.
-            # For safety, we ensure it exists. If mmdc overwrites, that's fine.
-            # If mmdc needs it not to exist, then this tempfile approach needs adjustment.
-            # Let's assume mmdc can overwrite or create if not present.
-            # The tempfile is created, so mmdc can write to png_file_path.
 
             logger.info(f"Running mmdc: {MERMAID_CLI_PATH} -p {PUPPETEER_CONFIG_PATH} -i {mmd_file_path} -o {png_file_path}")
             process = await asyncio.create_subprocess_exec(
@@ -108,7 +92,7 @@ class MermaidToPngAndUploadTool(BaseTool):
             if process.returncode != 0:
                 error_msg = f"Mermaid CLI error (code {process.returncode}): {stderr.decode() if stderr else stdout.decode()}"
                 logger.error(error_msg)
-                if tool_context: # Check if tool_context is available
+                if tool_context:
                     await tool_context.save_artifact(
                         f"error_mermaid_syntax_{uuid.uuid4().hex[:8]}.mmd",
                         genai_types.Part(text=mermaid_syntax)
@@ -156,33 +140,27 @@ class MermaidToPngAndUploadTool(BaseTool):
                     principal_credentials, _ = auth.default(
                         scopes=['https://www.googleapis.com/auth/cloud-platform']
                     )
-
                     from google.auth import impersonated_credentials
                     impersonated_target_credentials = impersonated_credentials.Credentials(
                             source_credentials=principal_credentials,
                             target_principal=GCS_SIGNED_URL_SA_EMAIL,
-                            target_scopes=['https://www.googleapis.com/auth/devstorage.read_write'], # Or more specific GCS scopes
-                            lifetime=120 # How long the impersonated credentials should be valid
+                            target_scopes=['https://www.googleapis.com/auth/devstorage.read_write'],
+                            lifetime=120
                         )
-
-                    signed_url = blob.generate_signed_url(
+                    signed_url_str = blob.generate_signed_url(
                         version="v4",
                         expiration=datetime.timedelta(seconds=SIGNED_URL_EXPIRATION_SECONDS),
                         method="GET",
                         credentials=impersonated_target_credentials,
                     )
-                    logger.info(f"Generated signed URL: {signed_url}")
-                    output = f"Diagram PNG generated and saved to Google Cloud Storage. Download (link expires in {SIGNED_URL_EXPIRATION_SECONDS // 60} mins): {signed_url}"
-                    # Save the signed URL in the tool context state for later retrieval
+                    logger.info(f"Generated signed URL: {signed_url_str}")
+                    output = f"Diagram PNG generated and saved to Google Cloud Storage. Download (link expires in {SIGNED_URL_EXPIRATION_SECONDS // 60} mins): {signed_url_str}"
                     if tool_context:
                         tool_context.state[GCS_LINK_STATE_KEY] = output
                         logger.info(f"Saved signed URL to tool context state under key: {GCS_LINK_STATE_KEY}")
-
-                        # This tool's output itself doesn't need summarization BY DiagramGeneratorAgent's LLM
                         tool_context.actions.skip_summarization = True
                     return output
-
-                except google.auth.exceptions.RefreshError as refresh_err: # Specific exception
+                except google.auth.exceptions.RefreshError as refresh_err:
                     logger.error(f"Error refreshing impersonated credentials for Mermaid: {refresh_err}. Check SA '{GCS_SIGNED_URL_SA_EMAIL}'.", exc_info=True)
                     if tool_context:
                         await tool_context.save_artifact(adk_artifact_filename, genai_types.Part(inline_data=genai_types.Blob(mime_type="image/png", data=png_data)))
@@ -192,7 +170,6 @@ class MermaidToPngAndUploadTool(BaseTool):
                     if tool_context:
                         await tool_context.save_artifact(adk_artifact_filename, genai_types.Part(inline_data=genai_types.Blob(mime_type="image/png", data=png_data)))
                     return f"Error generating signed URL for Mermaid diagram. PNG file saved to ADK artifacts as: {adk_artifact_filename}. GCS Error: {str(e_sign)}"
-
             except Exception as e_gcs:
                 logger.error(f"Error during GCS PNG storage for Mermaid: {e_gcs}", exc_info=True)
                 if tool_context:
