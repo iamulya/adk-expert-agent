@@ -241,7 +241,7 @@ root_agent_tools = [
 
 root_agent = ADKAgent(
     name="adk_expert_orchestrator",
-    model=Gemini(model=DEFAULT_MODEL_NAME),
+    model=Gemini(model=PRO_MODEL_NAME),
     instruction=root_agent_instruction_provider,
     tools=root_agent_tools,
     before_model_callback=log_prompt_before_model_call,
