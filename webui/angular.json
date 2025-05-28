@@ -70,7 +70,13 @@
               "buildTarget": "agent_framework_web:build:production"
             },
             "development": {
-              "buildTarget": "agent_framework_web:build:development"
+              "buildTarget": "agent_framework_web:build:development",
+              "allowedHosts": [
+                ".localhost",
+                "127.0.0.1",
+                "[::1]",
+                "adk-expert.iamulya.one"
+              ]
             }
           },
           "defaultConfiguration": "development"
