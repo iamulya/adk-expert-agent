@@ -15,7 +15,7 @@ export class StarterQuestionsComponent {
     "How do I set up a new ADK agent?",
     "Explain the AgentTool in ADK.",
     "Can you help with GitHub issue #123 in google/adk-python?",
-    "Show in a sequence diagram how a user request is handled by ADK",
+    "Show in a sequence diagram how the Runner orchestrates the entire lifecycle of an agent interaction for a given user session.",
     "Create a PDF document about ADK tools."
   ];
 

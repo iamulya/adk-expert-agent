@@ -9,7 +9,9 @@
             // Running it as a module is generally more robust.
             "module": "google.adk.cli",
             "args": [
-                "web",
+                "api_server",
+                "--allow_origins",
+                "http://localhost:4200",
                 "--log_level",
                 "debug",
                 "."

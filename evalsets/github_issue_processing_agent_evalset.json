@@ -1,0 +1,101 @@
+{
+    "eval_set_id": "github_issue_processing_agent_eval_set_001",
+    "name": "GitHub Issue Processing Agent Eval Set",
+    "description": "Test cases for the github_issue_processing_agent.",
+    "eval_cases": [
+      {
+        "eval_id": "valid_issue_number",
+        "conversation": [
+          {
+            "invocation_id": "inv_gh_001",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "{\"issue_number\": \"77\"}"
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "{\"guidance\": \"Issue #77 describes X. Based on this, the ADK guidance involves checking Y and Z.\"}"
+                }
+              ]
+            },
+            "creation_timestamp": 1700000101.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000101.0
+      },
+      {
+        "eval_id": "non_existent_issue_number",
+        "conversation": [
+          {
+            "invocation_id": "inv_gh_002",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "{\"issue_number\": \"99999\"}"
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "{\"guidance\": \"Error retrieving GitHub issue: HTTP error occurred: 404 - Not Found\"}"
+                }
+              ]
+            },
+            "creation_timestamp": 1700000102.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000102.0
+      },
+      {
+        "eval_id": "empty_issue_description",
+        "conversation": [
+          {
+            "invocation_id": "inv_gh_003",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "{\"issue_number\": \"1\"}" 
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "{\"guidance\": \"The GitHub issue description is empty.\"}"
+                }
+              ]
+            },
+            "creation_timestamp": 1700000103.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000103.0
+      }
+    ],
+    "creation_timestamp": 1700000100.0
+  }

@@ -3,6 +3,50 @@
 This agent is an expert on Google's Agent Development Kit (ADK) version 1.0.0.
 It can answer general questions about ADK and help find solutions/guidance for GitHub issues.
 
+## Directory Structure 
+
+```
+└── iamulya-adk-expert-agent/
+    ├── README.md
+    ├── pyproject.toml
+    ├── expert-agents/
+    │   ├── __init__.py
+    │   ├── agent.py  # Contains root_agent
+    │   ├── callbacks.py
+    │   ├── config.py
+    │   ├── context_loader.py
+    │   ├── Dockerfile
+    │   ├── puppeteer-config.json
+    │   ├── test.md
+    │   ├── test.mmd
+    │   ├── .env.example
+    │   ├── data/
+    │   │   └── google-adk-python-1.0.txt
+    │   ├── agents/  # New folder for specific agents
+    │   │   ├── __init__.py
+    │   │   ├── diagram_generator_agent.py
+    │   │   ├── document_generator_agent.py
+    │   │   ├── github_issue_processing_agent.py
+    │   │   └── mermaid_syntax_verifier_agent.py
+    │   └── tools/   # New folder for tools
+    │       ├── __init__.py
+    │       ├── adk_guidance_tool.py
+    │       ├── clean_github_issue_text_tool.py
+    │       ├── construct_github_url_tool.py
+    │       ├── extract_github_issue_details_tool.py
+    │       ├── github_issue_tool.py
+    │       ├── github_utils.py
+    │       ├── handle_extraction_result_tool.py
+    │       ├── marp_document_tools.py
+    │       ├── marp_utils.py
+    │       ├── mermaid_to_png_and_upload_tool.py
+    │       └── prepare_document_content_tool.py
+    ├── webui/
+    │   └── ... (rest of webui structure remains the same)
+    └── .github/
+        └── ... (rest of .github structure remains the same)
+```
+
 ## Setup
 
 1.  **Create a Python Virtual Environment**:
@@ -29,7 +73,7 @@ It can answer general questions about ADK and help find solutions/guidance for G
     ```
 
 3.  **Install Playwright Browsers (Optional for general use, if not using other browser-dependent tools)**:
-    If you plan to use tools that rely on `browser-use` (though the primary GitHub issue processing in this agent no longer uses it), you'll need Playwright browsers. Install Chromium (recommended for compatibility):
+    If you plan to use tools that rely on `browser-use` (e.g., the `ExtractGitHubIssueDetailsTool`, though the primary GitHub issue processing in this agent no longer uses it by default), you'll need Playwright browsers. Install Chromium (recommended for compatibility):
     ```bash
     playwright install --with-deps chromium
     ```
@@ -47,9 +91,3 @@ It can answer general questions about ADK and help find solutions/guidance for G
     gcloud auth application-default login
     ```
 
-## Running the Agent
-
-You can run this agent as a web application using the ADK CLI:
-
-```bash
-adk web .

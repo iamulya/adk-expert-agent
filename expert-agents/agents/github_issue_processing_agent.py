@@ -13,12 +13,12 @@ from google.adk.tools import BaseTool
 from google.adk.tools.tool_context import ToolContext
 from google.genai import types as genai_types
 
-from .tools import (
+from ..tools import (
     GetGithubIssueDescriptionTool,
     ADKGuidanceTool, ADKGuidanceToolInput, ADKGuidanceToolOutput,
 )
-from .config import DEFAULT_MODEL_NAME
-from .callbacks import log_prompt_before_model_call
+from ..config import DEFAULT_MODEL_NAME
+from ..callbacks import log_prompt_before_model_call
 
 logger = logging.getLogger(__name__)
 
