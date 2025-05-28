@@ -12,7 +12,7 @@ from google.adk.agents.readonly_context import ReadonlyContext
 from google.genai import types as genai_types
 from pydantic import BaseModel, Field
 
-from tools import (
+from ..tools import (
     DOC_LINK_STATE_KEY,
     generate_pdf_from_markdown_with_gcs,
     generate_html_slides_from_markdown_with_gcs,

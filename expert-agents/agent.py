@@ -1,4 +1,3 @@
-# expert-agents/agent.py
 import os
 import logging
 import re
@@ -22,15 +21,13 @@ from .context_loader import get_escaped_adk_context_for_llm
 from .config import DEFAULT_MODEL_NAME, PRO_MODEL_NAME
 from .callbacks import log_prompt_before_model_call
 
-# Import agents from the new 'agents' subpackage
+# Import agents from the 'agents' subpackage
 from .agents.github_issue_processing_agent import github_issue_processing_agent, GitHubIssueProcessingInput, SequentialProcessorFinalOutput
 from .agents.document_generator_agent import document_generator_agent, DocumentGeneratorAgentToolInput
-from .agents.diagram_generator_agent import diagram_generator_agent, DiagramGeneratorAgentToolInput
+from .agents.mermaid_diagram_orchestrator_agent import mermaid_diagram_orchestrator_agent, DiagramGeneratorAgentToolInput # Updated name
 
 # Import tools from the new 'tools' subpackage
 from .tools.prepare_document_content_tool import PrepareDocumentContentTool, PrepareDocumentContentToolInput
-# Note: mermaid_gcs_tool_instance and GCS_LINK_STATE_KEY are used by diagram_generator_agent,
-# which is now in its own file and imports them directly. So, no need to import them here for root_agent.
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -40,8 +37,6 @@ def get_text_from_content(content: genai_types.Content) -> str:
         return content.parts[0].text
     return ""
 
-# Pydantic model for PrepareDocumentContentTool's output when used by root_agent's LLM
-# This is the same as PrepareDocumentContentToolInput, but named for clarity in root_agent context
 class PreparedContentDataForDocGen(PrepareDocumentContentToolInput):
     pass
 
@@ -86,13 +81,17 @@ async def root_agent_after_tool_callback(
             tool_context.actions.skip_summarization = True
             return genai_types.Content(parts=[genai_types.Part(text=error_msg)])
 
-    elif tool.name == diagram_generator_agent.name:
-        logger.info(f"RootAgent (after_tool_callback): Received response from '{diagram_generator_agent.name}': {str(tool_response)[:200]}")
+    elif tool.name == mermaid_diagram_orchestrator_agent.name: # Updated name
+        logger.info(f"RootAgent (after_tool_callback): Received response from '{mermaid_diagram_orchestrator_agent.name}': {str(tool_response)[:200]}")
+        # The orchestrator agent's after_agent_cb now ensures the output is a string.
         if isinstance(tool_response, str) and tool_response.strip():
             tool_context.actions.skip_summarization = True
             return genai_types.Content(parts=[genai_types.Part(text=tool_response)])
+        elif isinstance(tool_response, dict) and "result" in tool_response and isinstance(tool_response["result"], str): # ADK might wrap it
+            tool_context.actions.skip_summarization = True
+            return genai_types.Content(parts=[genai_types.Part(text=tool_response["result"])])
         else:
-            error_msg = f"Error: Diagram generation agent returned an unexpected or empty response: {str(tool_response)[:100]}"
+            error_msg = f"Error: Diagram orchestrator agent returned an unexpected or empty response: {str(tool_response)[:100]}"
             logger.error(f"RootAgent: {error_msg}")
             tool_context.actions.skip_summarization = True
             return genai_types.Content(parts=[genai_types.Part(text=error_msg)])
@@ -113,7 +112,10 @@ def root_agent_instruction_provider(context: ReadonlyContext) -> str:
     
     if invocation_ctx and invocation_ctx.session and invocation_ctx.session.events:
         last_event = invocation_ctx.session.events[-1]
-        if last_event.author == root_agent.name and            last_event.content and last_event.content.parts and            last_event.content.parts[0].function_response and            last_event.content.parts[0].function_response.name == "prepare_document_content_tool":
+        if last_event.author == root_agent.name and \
+           last_event.content and last_event.content.parts and \
+           last_event.content.parts[0].function_response and \
+           last_event.content.parts[0].function_response.name == "prepare_document_content_tool":
             
             logger.info("RootAgent (instruction_provider): Detected response from prepare_document_content_tool. Instructing to call document_generator_agent.")
             tool_output_data_container = last_event.content.parts[0].function_response.response
@@ -121,13 +123,11 @@ def root_agent_instruction_provider(context: ReadonlyContext) -> str:
             prepared_content_data = tool_output_data_container.get("result", tool_output_data_container)
 
             try:
-                # Validate against the Pydantic model for what prepare_document_content_tool returns
                 validated_content_for_doc_gen = PreparedContentDataForDocGen.model_validate(prepared_content_data)
-                # Map to DocumentGeneratorAgentToolInput
                 doc_gen_agent_actual_input = DocumentGeneratorAgentToolInput(
                     markdown_content=validated_content_for_doc_gen.markdown_content,
                     document_type=validated_content_for_doc_gen.document_type,
-                    output_filename=validated_content_for_doc_gen.output_filename_base # document_generator_agent expects 'output_filename'
+                    output_filename=validated_content_for_doc_gen.output_filename_base
                 )
                 system_instruction = f"""
 You have received structured data from the 'prepare_document_content_tool'.
@@ -160,7 +160,8 @@ Your response should ONLY be the function call. Do not include any other text.
         if extracted_issue_number:
             break
     
-    is_github_keywords_present = "github" in user_query_text.lower() or                                  any(kw in user_query_text.lower() for kw in ["issue", "bug", "ticket", "feature"])
+    is_github_keywords_present = "github" in user_query_text.lower() or \
+                                 any(kw in user_query_text.lower() for kw in ["issue", "bug", "ticket", "feature"])
 
     doc_gen_keywords_pdf = ["pdf", "document", "report"]
     doc_gen_keywords_slides = ["slides", "presentation", "deck", "pptx", "powerpoint", "html slides"]
@@ -170,7 +171,7 @@ Your response should ONLY be the function call. Do not include any other text.
     elif any(kw in user_query_text.lower() for kw in doc_gen_keywords_slides):
         requested_doc_type = "pptx" if "pptx" in user_query_text.lower() or "powerpoint" in user_query_text.lower() else "html"
 
-    diagram_keywords = ["diagram", "architecture", "visualize", "mermaid"]
+    diagram_keywords = ["diagram", "architecture", "visualize", "mermaid", "graph"]
     is_diagram_request = any(kw in user_query_text.lower() for kw in diagram_keywords)
 
     if is_diagram_request:
@@ -179,7 +180,7 @@ Your response should ONLY be the function call. Do not include any other text.
         system_instruction = f"""
 You are an expert orchestrator for Google's Agent Development Kit (ADK).
 The user is asking for an architecture diagram. Their query is: "{user_query_text}"
-Your task is to call the '{diagram_generator_agent.name}' tool.
+Your task is to call the '{mermaid_diagram_orchestrator_agent.name}' tool.
 The tool expects its input as a JSON string. The value for the "request" argument MUST be the following JSON string:
 {diagram_agent_input_payload}
 This is your only action for this turn. Output only the tool call.
@@ -234,20 +235,20 @@ ADK Knowledge Context (for general ADK questions):
 root_agent_tools = [
     AgentTool(agent=github_issue_processing_agent),
     AgentTool(agent=document_generator_agent),
-    AgentTool(agent=diagram_generator_agent),
-    PrepareDocumentContentTool(), # This tool is defined in .tools.prepare_document_content_tool
+    AgentTool(agent=mermaid_diagram_orchestrator_agent), # Updated name
+    PrepareDocumentContentTool(),
 ]
 
 root_agent = ADKAgent(
     name="adk_expert_orchestrator",
-    model=Gemini(model=PRO_MODEL_NAME),
+    model=Gemini(model=DEFAULT_MODEL_NAME),
     instruction=root_agent_instruction_provider,
     tools=root_agent_tools,
     before_model_callback=log_prompt_before_model_call,
     after_tool_callback=root_agent_after_tool_callback,
     generate_content_config=genai_types.GenerateContentConfig(
         temperature=0.0,
-        max_output_tokens=60000, # Consider if this is still appropriate
+        max_output_tokens=60000,
         top_p=0.6,
     )
 )

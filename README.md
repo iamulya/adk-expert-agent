@@ -3,7 +3,7 @@
 This agent is an expert on Google's Agent Development Kit (ADK) version 1.0.0.
 It can answer general questions about ADK and help find solutions/guidance for GitHub issues.
 
-## Directory Structure (Post-Refactor)
+## Directory Structure 
 
 ```
 └── iamulya-adk-expert-agent/
@@ -91,10 +91,3 @@ It can answer general questions about ADK and help find solutions/guidance for G
     gcloud auth application-default login
     ```
 
-## Running the Agent
-
-You can run this agent as a web application using the ADK CLI:
-
-```bash
-adk web .
-```
