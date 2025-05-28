@@ -14,14 +14,21 @@ echo "--- Starting Python 3.12, uv, Node.js, Angular CLI, Mermaid & Marp Setup f
 echo "--- Updating system packages ---"
 sudo apt update && sudo apt upgrade -y
 
-# 2. Install prerequisites
-echo "--- Installing prerequisite packages (software-properties-common, curl, build-essential) ---"
-sudo apt install -y software-properties-common curl build-essential
+# 2. Install prerequisites and fix potential add-apt-repository issues
+echo "--- Installing prerequisite packages (curl, build-essential) ---"
+sudo apt install -y curl build-essential
+
+echo "--- Ensuring software-properties-common and its dependencies are correctly installed ---"
+# This step is crucial to fix the 'AttributeError: 'NoneType' object has no attribute 'people''
+# that can occur with add-apt-repository.
+sudo apt install -y software-properties-common python3-launchpadlib
+# Reinstalling software-properties-common often resolves the issue.
+sudo apt install --reinstall -y software-properties-common
 
 # 3. Add deadsnakes PPA for Python 3.12
 echo "--- Adding deadsnakes PPA for Python 3.12 ---"
 sudo add-apt-repository -y ppa:deadsnakes/ppa
-sudo apt update
+sudo apt update # Update package list again after adding PPA
 
 # 4. Install Python 3.12
 echo "--- Installing Python 3.12, python3.12-dev, and python3.12-venv ---"
@@ -43,15 +50,14 @@ echo "--- Setting up Nodesource repository for Node.js LTS (20.x) ---"
 curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
 # For a specific version like 20.x, use:
 # curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+# No need for 'sudo apt update' here as the Nodesource script usually does it.
 
 # 8. Install Node.js and npm
 echo "--- Installing Node.js and npm ---"
-sudo apt-get install -y nodejs
+sudo apt-get install -y nodejs # apt-get can be used interchangeably with apt here
 
 # 9. Install common dependencies for headless Chromium (used by Puppeteer for Marp CLI)
 echo "--- Installing common dependencies for headless Chromium (Puppeteer) ---"
-# Puppeteer bundles Chromium, but these system libraries can prevent sandbox issues.
-# This list is a common subset; more might be needed in some specific environments.
 sudo apt-get install -y \
     libnss3 \
     libxss1 \
@@ -69,7 +75,7 @@ sudo apt-get install -y \
     libfontconfig1 \
     libpango-1.0-0 \
     libcairo2 \
-    libu2f-udev # Often needed for newer Chrome versions to avoid udev errors
+    libu2f-udev
 
 # 10. Install Angular CLI globally
 echo "--- Installing Angular CLI globally ---"
