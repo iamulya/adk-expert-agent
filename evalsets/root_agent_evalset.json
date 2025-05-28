@@ -1,0 +1,202 @@
+{
+    "eval_set_id": "adk_expert_orchestrator_eval_set_001",
+    "name": "ADK Expert Orchestrator Agent Eval Set",
+    "description": "Test cases for the root_agent (adk_expert_orchestrator) that routes requests to specialized agents or answers general ADK questions.",
+    "eval_cases": [
+      {
+        "eval_id": "general_adk_question",
+        "conversation": [
+          {
+            "invocation_id": "inv_root_001",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "What is Google ADK?"
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "Google's Agent Development Kit (ADK) version 1.0.0 is a framework for building AI agents..."
+                }
+              ]
+            },
+            "creation_timestamp": 1700000001.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000001.0
+      },
+      {
+        "eval_id": "github_issue_query",
+        "conversation": [
+          {
+            "invocation_id": "inv_root_002",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "Can you provide guidance on GitHub issue #42 for google/adk-python?"
+                }
+              ]
+            },
+            "intermediate_data": {
+              "tool_uses": [
+                {
+                  "name": "github_issue_processing_sequential_agent",
+                  "args": {
+                    "request": "{\"issue_number\": \"42\"}"
+                  }
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "{\"guidance\": \"Based on issue #42, the ADK guidance is to ensure all dependencies are correctly installed...\"}"
+                }
+              ]
+            },
+            "creation_timestamp": 1700000002.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000002.0
+      },
+      {
+        "eval_id": "document_generation_pdf_query",
+        "conversation": [
+          {
+            "invocation_id": "inv_root_003",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "Generate a PDF document explaining ADK toolsets."
+                }
+              ]
+            },
+            "intermediate_data": {
+              "tool_uses": [
+                {
+                  "name": "prepare_document_content_tool",
+                  "args": {
+                    "markdown_content": "# ADK Toolsets\\nADK provides several toolsets...",
+                    "document_type": "pdf",
+                    "output_filename_base": "adk_toolsets_overview",
+                    "original_user_query": "Generate a PDF document explaining ADK toolsets."
+                  }
+                },
+                {
+                  "name": "document_creation_specialist_agent",
+                  "args": {
+                    "request": "{\"markdown_content\": \"# ADK Toolsets\\nADK provides several toolsets...\", \"document_type\": \"pdf\", \"output_filename\": \"adk_toolsets_overview\"}"
+                  }
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "Document generated and saved to Google Cloud Storage. Download (link expires in 60 mins): https://storage.googleapis.com/..."
+                }
+              ]
+            },
+            "creation_timestamp": 1700000003.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000003.0
+      },
+      {
+        "eval_id": "diagram_generation_query",
+        "conversation": [
+          {
+            "invocation_id": "inv_root_004",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "Create an architecture diagram for a simple ADK agent with one tool."
+                }
+              ]
+            },
+            "intermediate_data": {
+              "tool_uses": [
+                {
+                  "name": "mermaid_diagram_orchestrator_agent",
+                  "args": {
+                    "request": "{\"diagram_query\": \"Create an architecture diagram for a simple ADK agent with one tool.\"}"
+                  }
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "Diagram PNG generated and saved to Google Cloud Storage. Download (link expires in 60 mins): https://storage.googleapis.com/..."
+                }
+              ]
+            },
+            "creation_timestamp": 1700000004.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000004.0
+      },
+      {
+        "eval_id": "github_issue_query_no_number",
+        "conversation": [
+          {
+            "invocation_id": "inv_root_005",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "What about that GitHub issue?"
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "It looks like you're asking about a GitHub issue for google/adk-python, but I couldn't find a specific issue number. Please provide the GitHub issue number."
+                }
+              ]
+            },
+            "creation_timestamp": 1700000005.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000005.0
+      }
+    ],
+    "creation_timestamp": 1700000000.0
+  }

@@ -1,0 +1,132 @@
+{
+    "eval_set_id": "mermaid_syntax_verifier_agent_eval_set_001",
+    "name": "Mermaid Syntax Verifier Agent Eval Set",
+    "description": "Test cases for the mermaid_syntax_verifier_agent.",
+    "eval_cases": [
+      {
+        "eval_id": "correct_syntax",
+        "conversation": [
+          {
+            "invocation_id": "inv_syn_ver_001",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "{\"mermaid_syntax\": \"```mermaid\\ngraph TD;\\n    A-->B;\\n```\"}"
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "```mermaid\ngraph TD;\n    A-->B;\n```"
+                }
+              ]
+            },
+            "creation_timestamp": 1700000501.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000501.0
+      },
+      {
+        "eval_id": "incorrect_syntax_missing_semicolon",
+        "conversation": [
+          {
+            "invocation_id": "inv_syn_ver_002",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "{\"mermaid_syntax\": \"```mermaid\\ngraph TD\\n    A-->B\\n```\"}"
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "```mermaid\ngraph TD;\n    A-->B;\n```"
+                }
+              ]
+            },
+            "creation_timestamp": 1700000502.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000502.0
+      },
+      {
+        "eval_id": "empty_syntax_block",
+        "conversation": [
+          {
+            "invocation_id": "inv_syn_ver_003",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "{\"mermaid_syntax\": \"```mermaid\\n\\n```\"}"
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "```mermaid\n\n```"
+                }
+              ]
+            },
+            "creation_timestamp": 1700000503.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000503.0
+      },
+      {
+        "eval_id": "syntax_without_codeblock_markers",
+        "conversation": [
+          {
+            "invocation_id": "inv_syn_ver_004",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "{\"mermaid_syntax\": \"graph TD; C---D;\"}"
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "```mermaid\ngraph TD;\n    C---D;\n```"
+                }
+              ]
+            },
+            "creation_timestamp": 1700000504.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000504.0
+      }
+    ],
+    "creation_timestamp": 1700000500.0
+  }

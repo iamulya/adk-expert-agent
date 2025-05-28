@@ -1,0 +1,143 @@
+{
+    "eval_set_id": "mermaid_diagram_orchestrator_agent_eval_set_001",
+    "name": "Mermaid Diagram Orchestrator Agent Eval Set",
+    "description": "Test cases for the mermaid_diagram_orchestrator_agent.",
+    "eval_cases": [
+      {
+        "eval_id": "valid_diagram_query",
+        "conversation": [
+          {
+            "invocation_id": "inv_diagorch_001",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "{\"diagram_query\": \"Create a sequence diagram for user login.\"}"
+                }
+              ]
+            },
+            "intermediate_data": {
+              "tool_uses": [
+                {
+                  "name": "mermaid_syntax_generator_agent",
+                  "args": {
+                    "request": "{\"diagram_query\": \"Create a sequence diagram for user login.\"}"
+                  }
+                },
+                {
+                  "name": "mermaid_to_png_and_gcs_upload",
+                  "args": {
+                    "mermaid_syntax": "```mermaid\\nsequenceDiagram\\n    participant User\\n    participant System\\n    User->>System: Enters credentials\\n    System-->>User: Authenticated\\n```"
+                  }
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "Diagram PNG generated and saved to Google Cloud Storage. Download (link expires in 60 mins): https://storage.googleapis.com/..."
+                }
+              ]
+            },
+            "creation_timestamp": 1700000301.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000301.0
+      },
+      {
+        "eval_id": "syntax_generator_error",
+        "conversation": [
+          {
+            "invocation_id": "inv_diagorch_002",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "{\"diagram_query\": \"This is an unparsable query for diagram syntax\"}"
+                }
+              ]
+            },
+            "intermediate_data": {
+              "tool_uses": [
+                {
+                  "name": "mermaid_syntax_generator_agent",
+                  "args": {
+                     "request": "{\"diagram_query\": \"This is an unparsable query for diagram syntax\"}"
+                  }
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "Error: Could not generate valid Mermaid syntax for the given query."
+                }
+              ]
+            },
+            "creation_timestamp": 1700000302.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000302.0
+      },
+      {
+        "eval_id": "png_generation_tool_error",
+        "conversation": [
+          {
+            "invocation_id": "inv_diagorch_003",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "{\"diagram_query\": \"graph TD; A--x B;\"}"
+                }
+              ]
+            },
+            "intermediate_data": {
+              "tool_uses": [
+                {
+                  "name": "mermaid_syntax_generator_agent",
+                  "args": {
+                    "request": "{\"diagram_query\": \"graph TD; A--x B;\"}"
+                  }
+                },
+                {
+                  "name": "mermaid_to_png_and_gcs_upload",
+                  "args": {
+                    "mermaid_syntax": "```mermaid\\ngraph TD;\\n  A --x B;\\n```"
+                  }
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "There was an error during the creation of the png file. Mermaid CLI error (code 1): Syntax error in graph\n\nOriginal Mermaid Syntax:\n```mermaid\\ngraph TD;\\n  A --x B;\\n```"
+                }
+              ]
+            },
+            "creation_timestamp": 1700000303.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000303.0
+      }
+    ],
+    "creation_timestamp": 1700000300.0
+  }

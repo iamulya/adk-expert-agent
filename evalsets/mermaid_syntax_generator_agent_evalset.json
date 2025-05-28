@@ -1,0 +1,101 @@
+{
+    "eval_set_id": "mermaid_syntax_generator_agent_eval_set_001",
+    "name": "Mermaid Syntax Generator Agent Eval Set",
+    "description": "Test cases for the mermaid_syntax_generator_agent.",
+    "eval_cases": [
+      {
+        "eval_id": "simple_diagram_query",
+        "conversation": [
+          {
+            "invocation_id": "inv_syn_gen_001",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "{\"diagram_query\": \"Draw a graph with node A pointing to node B\"}"
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "```mermaid\ngraph TD;\n    A-->B;\n```"
+                }
+              ]
+            },
+            "creation_timestamp": 1700000401.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000401.0
+      },
+      {
+        "eval_id": "complex_diagram_query",
+        "conversation": [
+          {
+            "invocation_id": "inv_syn_gen_002",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "{\"diagram_query\": \"Sequence diagram: Alice calls Bob, Bob replies to Alice.\"}"
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "```mermaid\nsequenceDiagram\n    Alice->>Bob: Hello Bob, how are you?\n    Bob-->>Alice: Great! How about you?\n```"
+                }
+              ]
+            },
+            "creation_timestamp": 1700000402.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000402.0
+      },
+      {
+        "eval_id": "empty_diagram_query",
+        "conversation": [
+          {
+            "invocation_id": "inv_syn_gen_003",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "{\"diagram_query\": \"\"}"
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "Error: No diagram query provided for syntax generation."
+                }
+              ]
+            },
+            "creation_timestamp": 1700000403.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000403.0
+      }
+    ],
+    "creation_timestamp": 1700000400.0
+  }

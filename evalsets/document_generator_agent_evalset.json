@@ -1,0 +1,165 @@
+{
+    "eval_set_id": "document_generator_agent_eval_set_001",
+    "name": "Document Generator Agent Eval Set",
+    "description": "Test cases for the document_generator_agent.",
+    "eval_cases": [
+      {
+        "eval_id": "generate_pdf",
+        "conversation": [
+          {
+            "invocation_id": "inv_docgen_001",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "{\"markdown_content\": \"# Title\\nThis is a test PDF.\", \"document_type\": \"pdf\", \"output_filename\": \"test_output.pdf\"}"
+                }
+              ]
+            },
+            "intermediate_data": {
+              "tool_uses": [
+                {
+                  "name": "generate_pdf_from_markdown_with_gcs",
+                  "args": {
+                    "markdown_content": "# Title\\nThis is a test PDF.",
+                    "output_filename": "test_output.pdf"
+                  }
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "Document generated and saved to Google Cloud Storage. Download (link expires in 60 mins): https://storage.googleapis.com/..."
+                }
+              ]
+            },
+            "creation_timestamp": 1700000201.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000201.0
+      },
+      {
+        "eval_id": "generate_html",
+        "conversation": [
+          {
+            "invocation_id": "inv_docgen_002",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "{\"markdown_content\": \"# Title\\nThis is test HTML slides.\", \"document_type\": \"html\", \"output_filename\": \"test_output.html\"}"
+                }
+              ]
+            },
+            "intermediate_data": {
+              "tool_uses": [
+                {
+                  "name": "generate_html_slides_from_markdown_with_gcs",
+                  "args": {
+                    "markdown_content": "# Title\\nThis is test HTML slides.",
+                    "output_filename": "test_output.html"
+                  }
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "Document generated and saved to Google Cloud Storage. Download (link expires in 60 mins): https://storage.googleapis.com/..."
+                }
+              ]
+            },
+            "creation_timestamp": 1700000202.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000202.0
+      },
+      {
+        "eval_id": "generate_pptx",
+        "conversation": [
+          {
+            "invocation_id": "inv_docgen_003",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "{\"markdown_content\": \"# Title\\nThis is test PPTX slides.\", \"document_type\": \"pptx\", \"output_filename\": \"test_output.pptx\"}"
+                }
+              ]
+            },
+            "intermediate_data": {
+              "tool_uses": [
+                {
+                  "name": "generate_pptx_slides_from_markdown_with_gcs",
+                  "args": {
+                    "markdown_content": "# Title\\nThis is test PPTX slides.",
+                    "output_filename": "test_output.pptx"
+                  }
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "Document generated and saved to Google Cloud Storage. Download (link expires in 60 mins): https://storage.googleapis.com/..."
+                }
+              ]
+            },
+            "creation_timestamp": 1700000203.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000203.0
+      },
+      {
+        "eval_id": "invalid_document_type",
+        "conversation": [
+          {
+            "invocation_id": "inv_docgen_004",
+            "user_content": {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "{\"markdown_content\": \"# Title\", \"document_type\": \"txt\", \"output_filename\": \"test_output.txt\"}"
+                }
+              ]
+            },
+            "final_response": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "Error: Invalid document_type specified. Must be 'pdf', 'html', or 'pptx'."
+                }
+              ]
+            },
+            "creation_timestamp": 1700000204.0
+          }
+        ],
+        "session_input": {
+          "app_name": "expert-agents-eval",
+          "user_id": "eval_user_01",
+          "state": {}
+        },
+        "creation_timestamp": 1700000204.0
+      }
+    ],
+    "creation_timestamp": 1700000200.0
+  }
