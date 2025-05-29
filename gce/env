@@ -1,0 +1,33 @@
+GCP_PROJECT_NUMBER="1033878884505"
+GEMINI_API_KEY_SECRET_ID="gemini-key"
+GITHUB_API_PAT_SECRET_ID="github-pat"
+GITHUB_API_PAT_SECRET_VERSION="1"
+
+# --- GCS Configuration for Document Generator ---
+# Name of the GCS bucket to store generated documents
+GCS_BUCKET_NAME_FOR_DOCS="adk-agent-files"
+
+# Google Cloud Project ID where the GCS_BUCKET_NAME_FOR_DOCS is located
+# Can be the same as GCP_PROJECT_ID above, or different if bucket is in another project
+GCS_PROJECT_ID_FOR_DOCS_BUCKET="genai-setup"
+
+# Service Account email to impersonate for generating GCS signed URLs
+# This SA needs 'Service Account Token Creator' on itself, and the agent's SA needs it on this SA.
+# This SA also needs permissions to read the objects it signs for (e.g., roles/storage.objectViewer)
+# and 'iam.serviceAccounts.signBlob' permission on itself.
+# If left empty, public GCS URLs will be attempted (bucket/object must be public).
+GCS_SIGNED_URL_SA_EMAIL="adk-agents@genai-setup.iam.gserviceaccount.com"
+
+# Expiration time for GCS signed URLs in seconds (default: 3600 = 1 hour)
+SIGNED_URL_EXPIRATION_SECONDS="3600"
+
+# --- Puppeteer Configuration ---
+PUPPETEER_CONFIG_PATH="/home/amulya_bhatia/adk-expert-agent/expert-agents/puppeteer-config.json"
+
+CHROME_PATH=/home/amulya_bhatia/chrome_for_mermaid/chrome-linux/chrome
+
+PUPPETEER_NO_SANDBOX=true
+
+CHROME_LAUNCHER_ARGS="--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage"
+
+PUPPETEER_EXECUTABLE_PATH=/home/amulya_bhatia/chrome_for_mermaid/chrome-linux/chrome

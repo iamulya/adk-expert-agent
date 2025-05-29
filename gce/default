@@ -1,0 +1,86 @@
+ 
+server {
+
+    # Set the root to your Angular app's build output directory
+    root /home/amulya_bhatia/adk-expert-agent/webui/dist/agent_framework_web/browser; # IMPORTANT: Update this path
+    index index.html index.htm;
+
+    server_name adk-expert.iamulya.one; # Or your domain name if you have one
+
+    # Serve Angular static files and handle client-side routing
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Proxy API requests to your ADK backend running on port 8000
+    location /api/ {
+        proxy_pass http://localhost:8000/; # Backend is listening on localhost:8000
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket headers (if your /api/ path will also proxy WebSockets like /run_live)
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 86400; # Optional: for long-lived connections
+    }
+
+    # If your /run_live WebSocket endpoint is called directly by the frontend (not via /api/run_live)
+    # you might need a separate location block for it. E.g.:
+    # location /run_live {
+    #     proxy_pass http://localhost:8000/run_live;
+    #     proxy_http_version 1.1;
+    #     proxy_set_header Upgrade $http_upgrade;
+    #     proxy_set_header Connection "upgrade";
+    #     proxy_read_timeout 86400;
+    # }
+    # However, it's simpler if the frontend also uses a proxied path for WebSockets,
+    # e.g., ws://<VM_IP>/api/run_live, which would be handled by the /api/ block.
+    # Your `webui/src/app/core/services/websocket.service.ts` uses `URLUtil.getWSServerUrl()`
+    # which in turn uses `URLUtil.getApiServerBaseUrl()`.
+    # Since `runtime-config.json` sets `backendUrl` to `http://<VM_IP>/api`,
+    # the WebSocket URL will attempt to connect to `ws://<VM_IP>/api/run_live`.
+    # So, the `/api/` block in Nginx needs to correctly proxy this.
+    # The `proxy_pass http://localhost:8000/;` (with trailing slash) should strip `/api`
+    # before forwarding to backend, so backend receives `/run_live`.
+
+    # Ensure runtime-config.json is served correctly and not cached
+    location = /assets/config/runtime-config.json {
+        add_header 'Cache-Control' 'no-cache, no-store, must-revalidate';
+        add_header 'Pragma' 'no-cache';
+        add_header 'Expires' '0';
+        try_files $uri =404; # Or serve it directly from its path if it's inside the root
+    }
+
+    # Add gzip configuration (optional but good for performance)
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_types text/plain text/css application/json application/javascript application/x-javascript text/xml application/xml+rss text/javascript image/svg+xml;
+
+    listen [::]:443 ssl ipv6only=on; # managed by Certbot
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/adk-expert.iamulya.one/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/adk-expert.iamulya.one/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+}
+
+server {
+    if ($host = adk-expert.iamulya.one) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
+    server_name adk-expert.iamulya.one;
+    return 404; # managed by Certbot
+
+
+}

@@ -1,0 +1,270 @@
+    1  cd adk-expert-agent/webui/
+    2  npm install
+    3  npm run serve --backend=http://localhost:8000 
+    4  npm run serve --host=0.0.0.0 --disable-host-check --backend=http://localhost:8000 
+    5  npm serve --host=0.0.0.0 --disable-host-check --backend=http://localhost:8000 
+    6  ng serve --host=0.0.0.0 --disable-host-check --backend=http://localhost:8000 
+    7  ng serve --host=0.0.0.0 --disable-host-check 
+    8  apt-get install git
+    9  sudo apt-get install git
+   10  git clone https://github.com/iamulya/adk-expert-agent.git
+   11  cd adk-expert-agent/
+   12  chmod +x compute-engine-setup.sh 
+   13  sudo ./compute-engine-setup.sh 
+   14  ./compute-engine-setup.sh 
+   15  git pull origin main
+   16  git fetch
+   17  chmod +x compute-engine-setup.sh 
+   18  ./compute-engine-setup.sh 
+   19  nano compute-engine-setup.sh 
+   20  git reset --hard origin/main
+   21  nano compute-engine-setup.sh 
+   22  ./compute-engine-setup.sh 
+   23  chmod +x compute-engine-setup.sh 
+   24  ./compute-engine-setup.sh 
+   25  git fetch
+   26  git reset --hard origin/main
+   27  chmod +x compute-engine-setup.sh 
+   28  ./compute-engine-setup.sh 
+   29  source ~/.bashrc
+   30  uv --version
+   31  uv sync
+   32  adk api_server --host 0.0.0.0 --port 8000 --allow_origins "http://localhost:4200" .
+   33  source .venv/bin/activate
+   34  adk api_server --host 0.0.0.0 --port 8000 --allow_origins "http://localhost:4200" .
+   35  ng serve --host=0.0.0.0
+   36  cd adk-expert-agent/webui/
+   37  ng serve --host=0.0.0.0
+   38  cd adk-expert-agent/
+   39  source .venv/bin/activate
+   40  adk api_server --host 0.0.0.0 --port 8000 --allow_origins "http://localhost:4200" .
+   41  adk api_server --host 0.0.0.0 --port 8000 --allow_origins "*" .
+   42  adk api_server --host 0.0.0.0 --port 8000 --allow_origins "http://35.193.234.119:4200" .
+   43  cd adk-expert-agent/
+   44  source .venv/bin/activate
+   45  adk api_server --help
+   46  adk api_server --host 0.0.0.0 --port 8000 --allow_origins "http://35.193.234.119:4200" .
+   47  adk api_server --host 0.0.0.0 --port 8000 --allow_origins http://35.193.234.119:4200 .
+   48  adk api_server --host 0.0.0.0 --port 8000 --allow_origins * .
+   49  adk api_server --host 0.0.0.0 --port 8000 --allow_origins '*' .
+   50  cd adk-expert-agent/webui/
+   51  ng serve --host=0.0.0.0
+   52  cd ad
+   53  cd adk-expert-agent/
+   54  git fetch
+   55  git reset --hard origin/main
+   56  cd webui/
+   57  nano src/assets/config/runtime-config.json 
+   58  ng serve --host=0.0.0.0
+   59  nano src/assets/config/runtime-config.json 
+   60  ng serve --host=0.0.0.0
+   61  pwd
+   62  group
+   63  groups amulya_bhatia
+   64  groups
+   65  sudo systemctl status adk-backend.service
+   66  # To view logs:
+   67  sudo journalctl -u adk-backend.service -f
+   68  cd /home/amulya_bhatia/adk-expert-agent/expert-agents/
+   69  ls -al
+   70  cd ..
+   71  ls -al
+   72  cd .venv
+   73  cd bin
+   74  ls -al
+   75  /home/amulya_bhatia/adk-expert-agent/.venv/bin/adk api_server --host 0.0.0.0 --port 8000 --allow_origins http://adk-expert.iamulya.one .
+   76  sudo apt install certbot python3-certbot-nginx
+   77  cd ..
+   78  cd webui/
+   79  npm run build
+   80  cd dist/agent_framework_web/browser/assets/config/
+   81  nano runtime-config.json
+   82  cd ..
+   83  ls -al
+   84  cd ..
+   85  ls -al
+   86  sudo nano /etc/nginx/sites-available/default
+   87  sudo certbot --nginx -d adk-expert.iamulya.one
+   88  nano /etc/nginx/sites-enabled/default
+   89  cd browser/assets/config/
+   90  nano runtime-config.json 
+   91  npx puppeteer browsers install chrome-headless-shell
+   92  cd ~/adk-expert-agent
+   93  ls -al
+   94  cd expert-agents/
+   95  ls -al
+   96  mmdc -p ~/adk-expert-agent/expert-agents/puppeteer-config.json -i test.mmd -o test.png
+   97  ~/adk-expert-agent
+   98  npx puppeteer browsers install chrome-headless-shell
+   99  export CHROME_PATH=/home/amulya_bhatia/.cache/puppeteer/chrome-headless-shell/linux-136.0.7103.94/chrome-headless-shell-linux64/chrome-headless-shell
+  100  mmdc -p ~/adk-expert-agent/expert-agents/puppeteer-config.json -i test.mmd -o test.png
+  101  cd adk-expert-agent/
+  102  source .venv/bin/activate
+  103  adk api_server --host 0.0.0.0 --port 8000 --allow_origins http://35.193.234.119:4200 .
+  104  adk api_server --host 0.0.0.0 --port 8000 --allow_origins http://adk-expert.iamulya.one:4200 .
+  105  adk api_server --host http://adk-expert.iamulya.one --port 8000 --allow_origins http://adk-expert.iamulya.one:4200 .
+  106  adk api_server --host 0.0.0.0 --port 8000 --allow_origins http://adk-expert.iamulya.one:4200 .
+  107  adk api_server --host 0.0.0.0 --port 8000 --allow_origins http://35.193.234.119 .
+  108  adk api_server --host 0.0.0.0 --port 8000 --allow_origins http://adk-expert.iamulya.one .
+  109  sudo apt update
+  110  sudo apt install -y nginx
+  111  sudo systemctl start nginx
+  112  sudo systemctl enable nginx
+  113  sudo nano /etc/nginx/sites-available/default
+  114  sudo nano /etc/systemd/system/adk-backend.service
+  115  sudo systemctl daemon-reload
+  116  sudo systemctl enable adk-backend.service
+  117  sudo systemctl start adk-backend.service
+  118  sudo nano /etc/systemd/system/adk-backend.service
+  119  sudo systemctl daemon-reload
+  120  sudo systemctl restart adk-backend.service
+  121  sudo systemctl status adk-backend.service # Verify it's running
+  122  sudo systemctl status adk-backend.service 
+  123  sudo nano /etc/systemd/system/adk-backend.service
+  124  sudo systemctl daemon-reload
+  125  sudo systemctl restart adk-backend.service
+  126  sudo systemctl status adk-backend.service 
+  127  sudo journalctl -u adk-backend.service -f
+  128  sudo systemctl daemon-reload
+  129  sudo nano /etc/systemd/system/adk-backend.service
+  130  sudo systemctl daemon-reload
+  131  sudo systemctl restart adk-backend.service
+  132  sudo systemctl status adk-backend.service 
+  133  sudo nano /etc/systemd/system/adk-backend.service
+  134  sudo journalctl -u adk-backend.service -f
+  135  sudo nano /etc/systemd/system/adk-backend.service
+  136  sudo systemctl daemon-reload
+  137  sudo systemctl restart adk-backend.service
+  138  sudo systemctl status adk-backend.service 
+  139  sudo nano /etc/nginx/sites-available/default
+  140  sudo nginx -t
+  141  sudo systemctl restart nginx
+  142  adk api_server --host 0.0.0.0 --port 8000 --allow_origins http://adk-expert.iamulya.one .
+  143  ls -al
+  144  cd expert-agents/
+  145  ls -al
+  146  nano .env
+  147  cd ..
+  148  adk api_server --host 0.0.0.0 --port 8000 --allow_origins http://adk-expert.iamulya.one .
+  149  gcloud auth application-default login
+  150  adk api_server --host 0.0.0.0 --port 8000 --allow_origins http://adk-expert.iamulya.one .
+  151  cd expert-agents/
+  152  nano .env
+  153  cd /root/.cache
+  154  cd /root
+  155  su
+  156  NODE_PATH=/usr/lib/node_modules/@mermaid-js/mermaid-cli/node_modules:/usr/lib/node_modules node /home/amulya_bhatia/download_chrome_for_mermaid.js
+  157  NODE_PATH=/usr/lib/node_modules/@mermaid-js/mermaid-cli/node_modules:/usr/lib/node_modules node /home/amulya_bhatia/download.js
+  158  nano download.js 
+  159  # Log in as amulya_bhatia or use sudo -u
+  160  sudo -u amulya_bhatia -s
+  161  # Set environment variables that Puppeteer needs for the download
+  162  export PUPPETEER_CACHE_DIR="/home/amulya_bhatia/.cache/puppeteer"
+  163  export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD="false" # Ensure it's not skipping
+  164  # If your puppeteer-config.json is important for args like --no-sandbox during actual mmdc runs,
+  165  # it's less critical for just the download, but doesn't hurt to set it.
+  166  export PUPPETEER_CONFIG_PATH="/home/amulya_bhatia/iamulya-adk-expert-agent/expert-agents/puppeteer-config.json"
+  167  # --- IMPORTANT: Set NODE_PATH ---
+  168  # This tells Node where to look for modules, prioritizing mermaid-cli's internal ones.
+  169  # The exact path to global node_modules might vary slightly based on your Node/npm setup.
+  170  # Common paths are /usr/lib/node_modules or /usr/local/lib/node_modules.
+  171  # First part is mermaid-cli's specific puppeteer, second is for other global modules if needed.
+  172  export NODE_PATH="/usr/lib/node_modules/@mermaid-js/mermaid-cli/node_modules:/usr/lib/node_modules"
+  173  echo "NODE_PATH is: $NODE_PATH"
+  174  echo "PUPPETEER_CACHE_DIR is: $PUPPETEER_CACHE_DIR"
+  175  # Run the script
+  176  node /home/amulya_bhatia/download.js
+  177  # Unset NODE_PATH if you don't want it globally for this shell session afterwards
+  178  # unset NODE_PATH
+  179  exit # Exit from amulya_bhatia's shell if you used sudo -u ... -s
+  180  npm uninstall mermaid-cli
+  181  npm uninstall marp-cli
+  182  npm uninstall -g mermaid-cli
+  183  npm uninstall -g marp-cli
+  184  mmdc
+  185  npm remove puppeteer
+  186  npm -g remove puppeteer
+  187  puppeteer
+  188  mmdc
+  189  export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false
+  190  PUPPETEER_DOWNLOAD_HOST="https://storage.googleapis.com"
+  191  export PUPPETEER_DOWNLOAD_HOST="https://storage.googleapis.com"
+  192  export UPPETEER_DOWNLOAD_PATH="/root/.cache/puppeteer"
+  193  export PUPPETEER_DOWNLOAD_PATH="/root/.cache/puppeteer"
+  194  mkdir -p /root/.cache/puppeteer && chown -R root:root /root/.cache
+  195  sudo mkdir -p /root/.cache/puppeteer && chown -R root:root /root/.cache
+  196  sudo chown -R root:root /root/.cache
+  197  npm install -g @mermaid-js/mermaid-cli @marp-team/marp-cli --unsafe-perm
+  198  npm uninstall -g @mermaid-js/mermaid-cli @marp-team/marp-cli
+  199  sudo npm uninstall -g @mermaid-js/mermaid-cli @marp-team/marp-cli
+  200  sudo npm install -g @mermaid-js/mermaid-cli @marp-team/marp-cli
+  201  cd root/.cache
+  202  sudo cd root/.cache
+  203  cd ..
+  204  cd /root/.cache
+  205  sudo cd /root/.cache
+  206  cd /root/.cache
+  207  groups
+  208  cd ~
+  209  cd adk-expert-agent/expert-agents/
+  210  mmdc -p ./puppeteer-config.json -i test.mmd -o test.png
+  211  sudo npm uninstall -g @mermaid-js/mermaid-cli @marp-team/marp-cli
+  212  mmdc -p ./puppeteer-config.json -i test.mmd -o test.png
+  213  cd ~/.cache/puppeteer/
+  214  ls -al
+  215  cd chrome-headless-shell/
+  216  ls -al
+  217  node node_modules/puppeteer/install.js
+  218  sudo npm uninstall -g @mermaid-js/mermaid-cli @marp-team/marp-cli
+  219  sudo npm install -g @mermaid-js/mermaid-cli@11.4.2 @marp-team/marp-cli@4.1.2
+  220  cd ~/adk-expert-agent/expert-agents/
+  221  mmdc -p ./puppeteer-config.json -i test.mmd -o test.png
+  222  node node_modules/puppeteer/install.js
+  223  npx puppeteer browsers install chrome-headless-shell
+  224  # As amulya_bhatia or using sudo if needed for permissions
+  225  rm -rf /home/amulya_bhatia/.cache/puppeteer/*
+  226  mkdir -p /home/amulya_bhatia/.cache/puppeteer
+  227  chmod u+rwx /home/amulya_bhatia/.cache/puppeteer
+  228  cd ...
+  229  cd ..
+  230  cd..
+  231  cd ..
+  232  nano download.js
+  233  sudo -u amulya_bhatia -s
+  234  export PUPPETEER_CACHE_DIR="/home/amulya_bhatia/.cache/puppeteer"
+  235  export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD="false"
+  236  nano /usr/lib/node_modules/@mermaid-js/mermaid-cli/node_modules/puppeteer-core/lib/cjs/puppeteer/revisions.js
+  237  nano /usr/lib/node_modules/@mermaid-js/mermaid-cli/node_modules/puppeteer/lib/cjs/puppeteer/revisions.js
+  238  nano /usr/lib/node_modules/@mermaid-js/mermaid-cli/node_modules/puppeteer-core/lib/cjs/puppeteer/revisions.js
+  239  cd adk-expert-agent/
+  240  source .venv/bin/activate
+  241  adk api_server --host 0.0.0.0 --port 8000 --allow_origins http://adk-expert.iamulya.one .
+  242  sudo usermod -a -G root amulya_bhatia
+  243  mmdc -p ./expert-agents/puppeteer-config.json -i test.mmd -o test.png
+  244  mmdc -p ./expert-agents/puppeteer-config.json -i ./expert-agents/test.mmd -o test.png
+  245  nano expert-agents/.env
+  246  adk api_server --host 0.0.0.0 --port 8000 --allow_origins http://adk-expert.iamulya.one .
+  247  curl --output chrome-linux.zip https://www.googleapis.com/download/storage/v1/b/chromium-browser-snapshots/o/Linux_x64%2F1368259%2Fchrome-linux.zip?generation=1728920269324378&alt=media
+  248  curl --output chrome-linux.zip "https://www.googleapis.com/download/storage/v1/b/chromium-browser-snapshots/o/Linux_x64%2F1368259%2Fchrome-linux.zip?generation=1728920269324378&alt=media"
+  249  # Perform these steps as user amulya_bhatia, or adjust paths and use sudo as needed
+  250  # Create a directory for this custom Chrome version
+  251  mkdir -p /home/amulya_bhatia/chrome_for_mermaid
+  252  cd /home/amulya_bhatia/chrome_for_mermaid
+  253  # Assuming chrome-linux.zip was downloaded to your home directory or here
+  254  mv ~/chrome-linux.zip . # Or wget <URL_YOU_FOUND> here
+  255  unzip chrome-linux.zip
+  256  # This will create a 'chrome-linux' directory.
+  257  # The executable will be inside: chrome-linux/chrome
+  258  sudo apt install unzip
+  259  unzip chrome-linux.zip
+  260  ldd /home/amulya_bhatia/chrome_for_mermaid/chrome-linux/chrome
+  261  export PUPPETEER_EXECUTABLE_PATH=/home/amulya_bhatia/chrome_for_mermaid/chrome-linux/chrome
+  262  export PUPPETEER_CONFIG_PATH=/home/amulya_bhatia/iamulya-adk-expert-agent/expert-agents/puppeteer-config.json
+  263  cd ../adk-expert-agent/
+  264  mmdc -p ./expert-agents/puppeteer-config.json -i ./expert-agents/test.mmd -o test.png
+  265  marp ./expert-agents/test.md --pdf -o test.pdf --allow-local-files
+  266  export CHROME_PATH=/home/amulya_bhatia/chrome_for_mermaid/chrome-linux/chrome
+  267  marp ./expert-agents/test.md --pdf -o test.pdf --allow-local-files
+  268  history
+  269  history | history.txt
+  270  history > history.txt
