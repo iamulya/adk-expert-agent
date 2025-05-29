@@ -101,7 +101,7 @@ export class ChatComponent implements OnInit, AfterViewInit, OnDestroy,
   @ViewChild('autoScroll') private scrollContainer!: ElementRef;
   private _snackBar = inject(MatSnackBar);
   shouldShowEvalTab = signal(true);
-  enableSseIndicator = signal(false);
+  enableSseIndicator = signal(true); // Changed to true
   videoElement!: HTMLVideoElement;
   currentMessage = '';
   messages: any[] = [];
@@ -118,8 +118,8 @@ export class ChatComponent implements OnInit, AfterViewInit, OnDestroy,
   functionCallEventId = '';
   redirectUri = URLUtil.getBaseUrlWithoutPath();
   showSidePanel = true;
-  useSse = false;
-  currentSessionState = {};
+  useSse = true; // Changed to true
+  currentSessionState = {}; 
 
   // Make hardcoded agent name available to the template
   public readonly templateHardcodedAgentName = HARDCODED_AGENT_NAME;
@@ -173,11 +173,12 @@ export class ChatComponent implements OnInit, AfterViewInit, OnDestroy,
   ) {}
 
   ngOnInit(): void {
+    this.showSidePanel = false; // Closed by default
     this.isLoadingApps.set(true);
     this.appName = ''; // Ensure appName is initially empty
     this.showStarterQuestions = false; // Ensure it's false during loading
 
-    // Validate and select the hardcoded agent
+    // Validate and select the hardcoded agent 
     this.agentService.listApps().pipe(
       catchError((err: HttpErrorResponse) => {
         this.loadingError.set(`Failed to connect to the ADK API server to list available agents. Please ensure it's running. Error: ${err.message}`);
@@ -224,8 +225,9 @@ export class ChatComponent implements OnInit, AfterViewInit, OnDestroy,
   }
 
   ngAfterViewInit() {
-    this.showSidePanel = true;
-    this.sideDrawer.open();
+    // Sidebar is now closed by default, [opened] binding handles it.
+    // If it needs to be open under specific conditions post-init, that logic would go here.
+    // For now, we want it closed by default.
   }
 
   ngAfterViewChecked() {
@@ -917,6 +919,7 @@ export class ChatComponent implements OnInit, AfterViewInit, OnDestroy,
 
   toggleSse() {
     this.useSse = !this.useSse;
+    this.enableSseIndicator.set(this.useSse); // Ensure signal is in sync
   }
 
   selectEvent(key: string) {
@@ -1047,5 +1050,9 @@ export class ChatComponent implements OnInit, AfterViewInit, OnDestroy,
       return '';
     }
     return mimeType.replace('/', '.');
+  }
+
+  openGitHubLink(): void {
+    window.open('https://github.com/iamulya/adk-expert-agent', '_blank');
   }
 }

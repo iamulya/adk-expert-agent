@@ -20,7 +20,7 @@
         style="position: absolute;width: 24px;height: 24px;color: #C4C7C5;cursor: pointer; margin-left: 20px;margin-top: 20px;"
         (click)="toggleSidePanel()">left_panel_open</span>
   }
-  <mat-drawer class="side-drawer" #sideDrawer mode="side" appResizableDrawer>
+  <mat-drawer class="side-drawer" #sideDrawer mode="side" [opened]="showSidePanel" appResizableDrawer>
     <div style="margin-top:20px; margin-left:20px; display:flex;">
       <div style="width: 100%">
       <div class="drawer-header">
@@ -115,11 +115,7 @@
     <div class="resize-handler"></div>
   </mat-drawer>
   <div class="chat-container">
-    <div class="chat-toolbar" *ngIf="appName && sessionId && !loadingError()">
-      <div style="display: flex;">
-        <div class="toolbar-session-text">Session ID</div>
-        <div class="toolbar-session-id">{{sessionId}}</div>
-      </div>
+    <div class="chat-toolbar" *ngIf="appName && !loadingError()"> <!-- sessionId removed from condition as it's no longer displayed here -->
       <div class="toolbar-actions">
         <div class="toolbar-sse-toggle">
           <mat-slide-toggle
@@ -131,14 +127,11 @@
         </div>
         <mat-divider [vertical]="true" style="margin-left: 8px; margin-right: 8px; height: 22px"></mat-divider>
         <div style="display: flex; align-items:center">
-          <div (click)="onNewSessionClick()" class="toolbar-new-sesison">
-            <mat-icon>add</mat-icon>
-            New Session
-          </div>
           <span class="material-symbols-outlined"
-              style="width: 24px;height: 24px;color: #C4C7C5;cursor: pointer; margin-right: 16px;"
-              (click)="deleteSession(sessionId)">
-            delete
+              style="width: 24px;height: 24px;color: #C4C7C5;cursor: pointer; margin-left: 8px; margin-right: 16px;"
+              (click)="openGitHubLink()"
+              title="Open GitHub Repository">
+            code 
           </span>
         </div>
       </div>
@@ -256,7 +249,7 @@
                 (click)="clickEvent(i)"
               >
                 <mat-icon>bolt</mat-icon>
-                {{ message.functionCall.name }}
+                Called {{ message.functionCall.name }} for further processing
               </button>
               <button
                 mat-stroked-button
@@ -265,7 +258,7 @@
                 (click)="clickEvent(i)"
               >
                 <mat-icon>check</mat-icon>
-                {{ message.functionResponse.name }}
+                {{ message.functionResponse.name }} has finished processing. Checking next steps...
               </button>
               @if (message.actualInvocationToolUses && message.evalStatus === 2) {
                 <div class="tool-uses-container">
@@ -326,16 +319,9 @@
             style="caret-color: white;"
           ></textarea>
           <div class="chat-input-actions">
-            <button mat-icon-button (click)="fileInput.click()" class="function-event-button" style="margin-right:10px">
-              <mat-icon>attach_file</mat-icon>
-            </button>
+            <!-- Removed attachment, mic, and video buttons -->
             <div>
-              <button  mat-icon-button matSuffix (click)="toggleAudioRecording()" [ngStyle]="{'background-color': isAudioRecording? 'rgb(234, 67, 53)': 'rgb(51, 53, 55)'}">
-                <mat-icon>mic</mat-icon>
-              </button>
-              <button  mat-icon-button matSuffix (click)="toggleVideoRecording()" [ngStyle]="{'background-color': isVideoRecording? 'rgb(234, 67, 53)': 'rgb(51, 53, 55)'}">
-                <mat-icon>videocam</mat-icon>
-              </button>
+              <!-- Empty div or can be removed if no other actions are on the right -->
             </div>
           </div>
         </mat-form-field>

@@ -459,9 +459,9 @@
    position: sticky;
    top: 0;
    height: 48px;
-   background: #1b1b1b;
+   background: #2c2c2e; /* Changed from #1b1b1b */
    display: flex;
-   justify-content: space-between;
+   justify-content: flex-end; 
    align-items: center;
    z-index: 10;
  }
