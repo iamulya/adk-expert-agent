@@ -1,10 +1,13 @@
 # ADK Expert Agent with Document and Diagram Generation
 
-This repository contains a sophisticated agent built using Google's Agent Development Kit (ADK) v1.0.0. The agent serves as an expert on ADK, capable of answering general questions, providing guidance on GitHub issues related to `google/adk-python`, generating documents (PDF, HTML, PPTX), and creating Mermaid architecture diagrams.
+This repository contains a sophisticated agent built using Google's Agent Development Kit (ADK) v1.0.0. The agent serves as an expert on ADK, capable of answering questions about ADK, , help you debug and fix errors in your ADK code, even provide you guidance about any of ADK's GitHub issues, generate unit tests for ADK components and Evalsets for your own agents! It is also capable of generating documents (PDF, HTML, PPTX), and creating Mermaid architecture diagrams, related to any of your ADK queries.
 
 ## Features
 
 *   **ADK Expertise:** Answers general questions about Google ADK v1.0.0.
+*   **Debug and Fix errors:** Provide your ADK code including your query and the ADK expert agent will provide you guidance on how to solve the issues.
+*   **Generate Unit tests:** Use the ADK knowledge to create tests for the ADK components.
+*   **Evalsets for your own ADK Agents:** Provide your code to the expert agent and as long as the total amount of input tokens don't exceed 1 million, the expert agent will be able to create Evalsets for your own agents.
 *   **GitHub Issue Processing:**
     *   Fetches details for specific GitHub issues from the `google/adk-python` repository.
     *   Provides ADK-specific guidance based on the issue content.
@@ -20,16 +23,15 @@ This repository contains a sophisticated agent built using Google's Agent Develo
     *   A `root_agent` (orchestrator) to delegate tasks to specialized agents.
     *   Dedicated agents for GitHub issue processing, document generation, and diagram orchestration.
     *   A suite of tools for specific functionalities (e.g., GitHub API interaction, Marp CLI, Mermaid CLI).
-*   **Web UI:** An Angular-based web interface for interacting with the agent and debugging, including viewing events, state, and artifacts.
+*   **Web UI:** An Angular-based web interface for interacting with the agent.
 *   **Evaluation Sets:** Includes `evalsets` for testing the behavior and responses of different agent components.
 
 ## Directory Structure
 
 ```
-└── iamulya-adk-expert-agent/
+└── adk-expert-agent/
     ├── README.md
     ├── pyproject.toml
-    ├── refactor.sh
     ├── evalsets/
     │   ├── document_generator_agent_evalset.json
     │   ├── github_issue_processing_agent_evalset.json
@@ -125,7 +127,7 @@ This repository contains a sophisticated agent built using Google's Agent Develo
 
 ```bash
 git clone <repository-url>
-cd iamulya-adk-expert-agent
+cd adk-expert-agent
 ```
 
 ### 2. Backend Setup (`expert-agents`)
@@ -191,14 +193,14 @@ cd iamulya-adk-expert-agent
 ### A. Locally
 
 1.  **Run the Backend (`expert-agents`):**
-    From the `iamulya-adk-expert-agent/expert-agents` directory (ensure your virtual environment is active and `.env` is configured):
+    From the `adk-expert-agent/expert-agents` directory (ensure your virtual environment is active and `.env` is configured):
     ```bash
     adk api_server --host 0.0.0.0 --port 8000 --allow_origins "http://localhost:4200" .
     ```
     This starts the ADK API server, serving the `expert-agents` application. The `.` indicates the current directory is the ADK app root.
 
 2.  **Run the Frontend (`webui`):**
-    From the `iamulya-adk-expert-agent/webui` directory, in a new terminal:
+    From the `adk-expert-agent/webui` directory, in a new terminal:
     ```bash
     npm run serve --backend=http://localhost:8000
     ```
@@ -211,7 +213,7 @@ cd iamulya-adk-expert-agent
 Dockerfiles are provided for both the backend (`expert-agents/Dockerfile`) and frontend (`webui/Dockerfile`). You can build and run them separately.
 
 1.  **Build Backend Docker Image:**
-    From the project root directory (`iamulya-adk-expert-agent`):
+    From the project root directory (`adk-expert-agent`):
     ```bash
     docker build -t adk-expert-backend -f expert-agents/Dockerfile .
     ```
@@ -227,7 +229,7 @@ Dockerfiles are provided for both the backend (`expert-agents/Dockerfile`) and f
     Note: For GCS signed URL impersonation to work from Docker, the application default credentials (ADC) mounted (or service account key, if used) must have "Service Account Token Creator" role on the `GCS_SIGNED_URL_SA_EMAIL`.
 
 3.  **Build Frontend Docker Image:**
-    From the project root directory (`iamulya-adk-expert-agent`):
+    From the project root directory (`adk-expert-agent`):
     ```bash
     docker build -t adk-expert-frontend -f webui/Dockerfile .
     ```
