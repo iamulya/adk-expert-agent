@@ -246,3 +246,13 @@ Dockerfiles are provided for both the backend (`expert-agents/Dockerfile`) and f
 ## Evaluation
 
 The `evalsets/` directory contains JSON files for evaluating the performance and behavior of different agents and their tool usage. These can be used with ADK's evaluation utilities to test changes and ensure consistency.
+
+## Important Notes
+
+* The Github issue guidance feature provides great output with the Gemini 2.5 Pro model. I have already used it with real ADK issues where the agent output was really appreciated.
+
+* The answers to all ADK related queries are almost always to the point, although here again Gemini 2.5 Pro shines because of detailed answers
+
+* During Content generation (diagrams, pdf, pptx), the behavior can sometime be a bit random. I have seen in my tests that the exact same query can result a great output and other times in an error. Hence, keep in mind that the model can return erroneous output (primarily syntax errors) which may not be convertable into output files. In such cases, the markdown or the mermaid output from the model is provided as the agent response so that the user has the opportunity to correct any small issues that might exist.
+
+* Especially during PDF and PPTX generation, the model can sometime randomly throw out a 500, even with queries that worked all the time in the past. I have tested it with the latest Gemini models and the 2.5 Pro gives the best results, however it can also throw 500 for the same query that it worked with in the last few times.
