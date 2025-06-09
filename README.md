@@ -2,11 +2,11 @@
 
 # ADK Expert Agent with Document and Diagram Generation
 
-This repository contains a sophisticated agent built using Google's Agent Development Kit (ADK) v1.0.0. The agent serves as an expert on ADK, capable of answering questions about ADK, , help you debug and fix errors in your ADK code, even provide you guidance about any of ADK's GitHub issues, generate unit tests for ADK components and Evalsets for your own agents! It is also capable of generating documents (PDF, HTML, PPTX), and creating Mermaid architecture diagrams, related to any of your ADK queries.
+This repository contains a sophisticated agent built using Google's Agent Development Kit (ADK) v1.2.0. The agent serves as an expert on ADK, capable of answering questions about ADK, , help you debug and fix errors in your ADK code, even provide you guidance about any of ADK's GitHub issues, generate unit tests for ADK components and Evalsets for your own agents! It is also capable of generating documents (PDF, HTML, PPTX), and creating Mermaid architecture diagrams, related to any of your ADK queries.
 
 ## Features
 
-*   **ADK Expertise:** Answers general questions about Google ADK v1.0.0.
+*   **ADK Expertise:** Answers general questions about Google ADK v1.2.0.
 *   **Debug and Fix errors:** Provide your ADK code including your query and the ADK expert agent will provide you guidance on how to solve the issues.
 *   **Generate Unit tests:** Use the ADK knowledge to create tests for the ADK components.
 *   **Evalsets for your own ADK Agents:** Provide your code to the expert agent and as long as the total amount of input tokens don't exceed 1 million, the expert agent will be able to create Evalsets for your own agents.

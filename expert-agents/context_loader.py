@@ -2,7 +2,7 @@
 from pathlib import Path
 
 # Define constants and globals related to ADK context loading here
-ADK_CONTEXT_DATA_FILE = Path(__file__).parent / "data" / "google-adk-python-1.0.txt"
+ADK_CONTEXT_DATA_FILE = Path(__file__).parent / "data" / "google-adk-python-1.2.0.txt"
 RAW_ADK_FILE_CONTENT = "" # This can be a single shared raw content
 
 def load_raw_adk_context_file_once():

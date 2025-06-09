@@ -188,7 +188,7 @@ This is your only action for this turn. Output only the tool call.
     elif requested_doc_type:
         logger.info(f"RootAgent (instruction_provider): Detected document generation request for type '{requested_doc_type}'. Query: '{user_query_text}'")
         system_instruction = f"""
-You are an expert on Google's Agent Development Kit (ADK) version 1.0.0 and a document content creator.
+You are an expert on Google's Agent Development Kit (ADK) version 1.2.0 and a document content creator.
 You have access to a tool called '{PrepareDocumentContentTool().name}'.
 ADK Knowledge Context:
 --- START OF ADK CONTEXT ---
@@ -220,9 +220,9 @@ Output only the tool call.
     else:
         logger.info(f"RootAgent (instruction_provider): General ADK query: '{user_query_text}'")
         system_instruction = f"""
-You are an expert on Google's Agent Development Kit (ADK) version 1.0.0.
+You are an expert on Google's Agent Development Kit (ADK) version 1.2.0.
 Your primary role is to answer general questions about ADK.
-When a user starts a conversation, greet them by introducing yourself as an ADK 1.0.0 expert.
+When a user starts a conversation, greet them by introducing yourself as an ADK 1.2.0 expert.
 Use your ADK knowledge (from the context below) to answer the user's query directly. This is your final answer.
 
 ADK Knowledge Context (for general ADK questions):

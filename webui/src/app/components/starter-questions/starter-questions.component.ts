@@ -14,8 +14,8 @@ export class StarterQuestionsComponent {
     "What is Google ADK?",
     "Write unit tests for code_executor_context.py",
     "Explain in detail how a user query is processed in the Google ADK.",
-    "Can you help with GitHub issue #123?",
-    "Show in a sequence diagram how the Runner orchestrates the entire lifecycle of an agent interaction for a given user session.",
+    "Can you help with ADK GitHub issue #123?",
+    "Show me the main ADK components in a diagram",
     "Create a PDF document about ADK tools."
   ];
 
