@@ -1,0 +1,3 @@
+gcloud run deploy adk-expert-agent --source . --region us-central1 --project genai-setup --allow-unauthenticated --set-env-vars="GCP_PROJECT_NUMBER=1033878884
+505,GEMINI_API_KEY_SECRET_ID=gemini-key,GITHUB_API_PAT_SECRET_ID=github-pat,GITHUB_API_PAT_SECRET_VERSION=1,GCS_BUCKET_NAME_FOR_DOCS=adk-agent-files,GCS_PROJECT_ID_FOR_DOCS_BUCKET=genai-setup,GCS_SIGNED_URL_SA_EMAIL=a
+dk-agents@genai-setup.iam.gserviceaccount.com,SIGNED_URL_EXPIRATION_SECONDS=3600,PUPPETEER_CONFIG_PATH=/app/puppeteer-config.json"

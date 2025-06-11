@@ -54,7 +54,7 @@ This repository contains a sophisticated agent built using Google's Agent Develo
     │   ├── test.mmd
     │   ├── .env.example
     │   ├── data/
-    │   │   └── google-adk-python-1.0.txt
+    │   │   └── google-adk-python-1.2.0.txt
     │   ├── agents/  # Specialized agents
     │   │   ├── __init__.py
     │   │   ├── document_generator_agent.py
@@ -105,6 +105,15 @@ This repository contains a sophisticated agent built using Google's Agent Develo
 *   **Mermaid Syntax Generator Agent (`mermaid_syntax_generator_agent`):** An LLM-based agent that takes a natural language description and ADK context to generate Mermaid diagram syntax.
 *   **Mermaid Syntax Verifier Agent (`mermaid_syntax_verifier_agent`):** An LLM-based agent designed to verify and correct Mermaid syntax (available but not directly in the main diagram orchestration flow of `mermaid_diagram_orchestrator_agent`).
 *   **Tools:** A collection of Python classes and functions that provide specific capabilities to the agents, such as interacting with GitHub, cleaning text, generating documents with Marp, and converting Mermaid diagrams.
+
+## High-Level Architecture
+
+![High-Level Architecture](img/adk-expert.png)
+
+## UI / Query Examples
+
+![Home Page](img/i2.png)
+
 
 ## Technology Stack
 
