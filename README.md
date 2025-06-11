@@ -114,29 +114,29 @@ Further information around the architecture and design can be found here: https:
 
 ## UI / Query Examples
 
-![Home Page](img/i2.png)
-
 **Home Page**
 
-![Home Page](img/i3.png)
+![Home Page](img/i2.png)
 
 **Unit-Test Generation**
 
-![Github Guidance](img/i1.png)
+![Unit-Test Generation](img/i3.png)
 
 **Guidance related to a Github issue**
 
-![Detailed ADK Query](img/i4.png)
+![Github Guidance](img/i1.png)
 
 **Detailed ADK Query**
 
-![Architectural Diagram Generation](img/i5.png)
+![Detailed ADK Query](img/i4.png)
 
 **Architectural Diagram Generation**
 
-![Document Generation](img/i6.png)
+![Architectural Diagram Generation](img/i5.png)
 
 **Document Generation**
+
+![Document Generation](img/i6.png)
 
 
 ## Technology Stack
@@ -144,9 +144,8 @@ Further information around the architecture and design can be found here: https:
 *   **Backend:** Python, Google Agent Development Kit (ADK), Google Gemini Models.
 *   **Document Generation:** Marp CLI.
 *   **Diagram Generation:** Mermaid CLI.
-*   **Frontend:** Angular, Angular Material, Nginx (for serving).
-*   **Cloud Services:** Google Cloud Secret Manager (for API keys), Google Cloud Storage (for documents and diagrams).
-*   **CI/CD:** GitHub Actions (Pylint).
+*   **Frontend:** Angular, Angular Material.
+*   **Cloud Services:** Google Cloud Secret Manager (for API keys), Google Cloud Storage (for documents and diagrams), Cloud Run for deployment
 
 ## Prerequisites
 
@@ -242,47 +241,6 @@ cd adk-expert-agent
     This will compile the Angular application and serve it, typically on `http://localhost:4200`. The UI will connect to the backend specified by the `--backend` flag.
 
     Access the Web UI at `http://localhost:4200`.
-
-### B. Using Docker
-
-Dockerfiles are provided for both the backend (`expert-agents/Dockerfile`) and frontend (`webui/Dockerfile`). You can build and run them separately.
-
-1.  **Build Backend Docker Image:**
-    From the project root directory (`adk-expert-agent`):
-    ```bash
-    docker build -t adk-expert-backend -f expert-agents/Dockerfile .
-    ```
-
-2.  **Run Backend Docker Container:**
-    You'll need to pass environment variables. One way is using an `.env` file with Docker:
-    Create `docker-backend.env` in `expert-agents/` with the necessary environment variables (e.g., `GCP_PROJECT_NUMBER`, `GEMINI_API_KEY_SECRET_ID`, etc., and GCS variables).
-    ```bash
-    docker run -d -p 8000:8000 --env-file expert-agents/docker-backend.env \
-           -v ~/.config/gcloud:/root/.config/gcloud \ # Mount gcloud ADC
-           adk-expert-backend
-    ```
-    Note: For GCS signed URL impersonation to work from Docker, the application default credentials (ADC) mounted (or service account key, if used) must have "Service Account Token Creator" role on the `GCS_SIGNED_URL_SA_EMAIL`.
-
-3.  **Build Frontend Docker Image:**
-    From the project root directory (`adk-expert-agent`):
-    ```bash
-    docker build -t adk-expert-frontend -f webui/Dockerfile .
-    ```
-
-4.  **Run Frontend Docker Container:**
-    Replace `http://your_backend_host:8000` with the actual accessible URL of your backend container (e.g., `http://localhost:8000` if backend is on host, or `http://<backend_container_ip>:8000`).
-    ```bash
-    docker run -d -p 8080:80 \
-           -e BACKEND_URL="http://your_backend_host:8000" \
-           adk-expert-frontend
-    ```
-    Access the Web UI at `http://localhost:8080`.
-
-    **Note:** For a more robust Docker deployment, consider using Docker Compose to manage both services, networking, and environment variables.
-
-## Evaluation
-
-The `evalsets/` directory contains JSON files for evaluating the performance and behavior of different agents and their tool usage. These can be used with ADK's evaluation utilities to test changes and ensure consistency.
 
 ## Important Notes
 
