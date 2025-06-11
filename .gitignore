@@ -9,3 +9,4 @@ comp.sh
 setup_webui.sh
 webui/package-lock.json
 .angular
+webui/dist
