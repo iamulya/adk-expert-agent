@@ -110,9 +110,33 @@ This repository contains a sophisticated agent built using Google's Agent Develo
 
 ![High-Level Architecture](img/adk-expert.png)
 
+Further information around the architecture and design can be found here: https://deepwiki.com/iamulya/adk-expert-agent
+
 ## UI / Query Examples
 
 ![Home Page](img/i2.png)
+
+**Home Page**
+
+![Home Page](img/i3.png)
+
+**Unit-Test Generation**
+
+![Github Guidance](img/i1.png)
+
+**Guidance related to a Github issue**
+
+![Detailed ADK Query](img/i4.png)
+
+**Detailed ADK Query**
+
+![Architectural Diagram Generation](img/i5.png)
+
+**Architectural Diagram Generation**
+
+![Document Generation](img/i6.png)
+
+**Document Generation**
 
 
 ## Technology Stack
