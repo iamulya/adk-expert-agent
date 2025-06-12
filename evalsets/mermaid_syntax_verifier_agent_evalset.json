@@ -12,7 +12,7 @@
               "role": "user",
               "parts": [
                 {
-                  "text": "{\"mermaid_syntax\": \"```mermaid\\ngraph TD;\\n    A-->B;\\n```\"}"
+                  "text": "{\"mermaid_syntax\": \"```mermaid\ngraph TD;\n    A-->B;\n```\"}"
                 }
               ]
             },
@@ -43,7 +43,7 @@
               "role": "user",
               "parts": [
                 {
-                  "text": "{\"mermaid_syntax\": \"```mermaid\\ngraph TD\\n    A-->B\\n```\"}"
+                  "text": "{\"mermaid_syntax\": \"```mermaid\ngraph TD\n    A-->B\n```\"}"
                 }
               ]
             },
@@ -74,7 +74,7 @@
               "role": "user",
               "parts": [
                 {
-                  "text": "{\"mermaid_syntax\": \"```mermaid\\n\\n```\"}"
+                  "text": "{\"mermaid_syntax\": \"```mermaid\n\n```\"}"
                 }
               ]
             },

@@ -14,5 +14,9 @@ dependencies = [
 ]
 
 [project.scripts]
-# If you had a main entry point for a CLI app, you'd define it here
-# e.g., my-agent = "my_adk_expert_agent.cli:main"
+
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
+    "ruff>=0.11.13",
+]

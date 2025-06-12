@@ -93,7 +93,7 @@
                 {
                   "name": "prepare_document_content_tool",
                   "args": {
-                    "markdown_content": "# ADK Toolsets\\nADK provides several toolsets...",
+                    "markdown_content": "# ADK Toolsets\nADK provides several toolsets...",
                     "document_type": "pdf",
                     "output_filename_base": "adk_toolsets_overview",
                     "original_user_query": "Generate a PDF document explaining ADK toolsets."
@@ -102,7 +102,7 @@
                 {
                   "name": "document_creation_specialist_agent",
                   "args": {
-                    "request": "{\"markdown_content\": \"# ADK Toolsets\\nADK provides several toolsets...\", \"document_type\": \"pdf\", \"output_filename\": \"adk_toolsets_overview\"}"
+                    "request": "{\"markdown_content\": \"# ADK Toolsets\nADK provides several toolsets...\", \"document_type\": \"pdf\", \"output_filename\": \"adk_toolsets_overview\"}"
                   }
                 }
               ]

@@ -15,7 +15,7 @@ export class StarterQuestionsComponent {
     "Write unit tests for code_executor_context.py",
     "Explain in detail how a user query is processed in the Google ADK.",
     "Can you help with ADK GitHub issue #123?",
-    "Show me the main ADK components in a diagram",
+    "Class relationship between BaseAgent and LlmAgent in a diagram",
     "Create a PDF document about ADK tools."
   ];
 

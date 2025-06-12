@@ -27,7 +27,7 @@
                 {
                   "name": "mermaid_to_png_and_gcs_upload",
                   "args": {
-                    "mermaid_syntax": "```mermaid\\nsequenceDiagram\\n    participant User\\n    participant System\\n    User->>System: Enters credentials\\n    System-->>User: Authenticated\\n```"
+                    "mermaid_syntax": "```mermaid\nsequenceDiagram\n    participant User\n    participant System\n    User->>System: Enters credentials\n    System-->>User: Authenticated\n```"
                   }
                 }
               ]
@@ -115,7 +115,7 @@
                 {
                   "name": "mermaid_to_png_and_gcs_upload",
                   "args": {
-                    "mermaid_syntax": "```mermaid\\ngraph TD;\\n  A --x B;\\n```"
+                    "mermaid_syntax": "```mermaid\ngraph TD;\n  A --x B;\n```"
                   }
                 }
               ]
@@ -124,7 +124,7 @@
               "role": "model",
               "parts": [
                 {
-                  "text": "There was an error during the creation of the png file. Mermaid CLI error (code 1): Syntax error in graph\n\nOriginal Mermaid Syntax:\n```mermaid\\ngraph TD;\\n  A --x B;\\n```"
+                  "text": "There was an error during the creation of the png file. Mermaid CLI error (code 1): Syntax error in graph\n\nOriginal Mermaid Syntax:\n```mermaid\ngraph TD;\n  A --x B;\n```"
                 }
               ]
             },

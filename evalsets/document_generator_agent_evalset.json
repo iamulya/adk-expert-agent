@@ -12,7 +12,7 @@
               "role": "user",
               "parts": [
                 {
-                  "text": "{\"markdown_content\": \"# Title\\nThis is a test PDF.\", \"document_type\": \"pdf\", \"output_filename\": \"test_output.pdf\"}"
+                  "text": "{\"markdown_content\": \"# Title\nThis is a test PDF.\", \"document_type\": \"pdf\", \"output_filename\": \"test_output.pdf\"}"
                 }
               ]
             },
@@ -21,7 +21,7 @@
                 {
                   "name": "generate_pdf_from_markdown_with_gcs",
                   "args": {
-                    "markdown_content": "# Title\\nThis is a test PDF.",
+                    "markdown_content": "# Title\nThis is a test PDF.",
                     "output_filename": "test_output.pdf"
                   }
                 }
@@ -54,7 +54,7 @@
               "role": "user",
               "parts": [
                 {
-                  "text": "{\"markdown_content\": \"# Title\\nThis is test HTML slides.\", \"document_type\": \"html\", \"output_filename\": \"test_output.html\"}"
+                  "text": "{\"markdown_content\": \"# Title\nThis is test HTML slides.\", \"document_type\": \"html\", \"output_filename\": \"test_output.html\"}"
                 }
               ]
             },
@@ -63,7 +63,7 @@
                 {
                   "name": "generate_html_slides_from_markdown_with_gcs",
                   "args": {
-                    "markdown_content": "# Title\\nThis is test HTML slides.",
+                    "markdown_content": "# Title\nThis is test HTML slides.",
                     "output_filename": "test_output.html"
                   }
                 }
@@ -96,7 +96,7 @@
               "role": "user",
               "parts": [
                 {
-                  "text": "{\"markdown_content\": \"# Title\\nThis is test PPTX slides.\", \"document_type\": \"pptx\", \"output_filename\": \"test_output.pptx\"}"
+                  "text": "{\"markdown_content\": \"# Title\nThis is test PPTX slides.\", \"document_type\": \"pptx\", \"output_filename\": \"test_output.pptx\"}"
                 }
               ]
             },
@@ -105,7 +105,7 @@
                 {
                   "name": "generate_pptx_slides_from_markdown_with_gcs",
                   "args": {
-                    "markdown_content": "# Title\\nThis is test PPTX slides.",
+                    "markdown_content": "# Title\nThis is test PPTX slides.",
                     "output_filename": "test_output.pptx"
                   }
                 }
