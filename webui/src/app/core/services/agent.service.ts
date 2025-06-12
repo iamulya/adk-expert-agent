@@ -59,11 +59,14 @@ export class AgentService {
     return this.http.post<any>(url, req, options);
   }
 
-  runSse(req: AgentRunRequest) {
-    const url = this.apiServerDomain + `/run_sse`;
+  runSse(req: AgentRunRequest): Observable<string> {
+    const url = `${this.apiServerDomain}/run_sse`;
     this.isLoading.next(true);
+
     return new Observable<string>((observer) => {
       const self = this;
+      const controller = new AbortController();
+
       fetch(url, {
         method: 'POST',
         headers: {
@@ -71,41 +74,59 @@ export class AgentService {
           'Accept': 'text/event-stream',
         },
         body: JSON.stringify(req),
+        signal: controller.signal, // For cancellation
       })
-        .then((response) => {
-          const reader = response.body?.getReader();
+        .then(async (response) => {
+          if (!response.body) {
+            throw new Error('Response body is null');
+          }
+
+          const reader = response.body.getReader();
           const decoder = new TextDecoder('utf-8');
-          let lastData: string | null = null;
+          let buffer = '';
 
-          const read = () => {
-            reader?.read()
-                .then(({done, value}) => {
-                  if (done) {
-                    return observer.complete();
-                  }
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              // Process any remaining data in the buffer before completing
+              if (buffer.startsWith('data: ')) {
+                const data = buffer.substring(6);
+                self.zone.run(() => observer.next(data));
+              }
+              observer.complete();
+              return;
+            }
 
-                  const chunk = decoder.decode(value, {stream: true});
-                  const lines = chunk.split(/\r?\n/).filter(
-                      (line) => line.startsWith('data:'));
-                  lines.forEach((line) => {
-                    const data = line.replace(/^data:\s*/, '');
-                    self.zone.run(() => observer.next(data));
-                  });
+            buffer += decoder.decode(value, { stream: true });
 
-                  read();  // Read the next chunk
-                })
-                .catch((err) => {
-                  self.zone.run(() => observer.error(err));
-                });
-          };
+            // Process complete messages from the buffer
+            let endOfMessageIndex;
+            while ((endOfMessageIndex = buffer.indexOf('\n\n')) >= 0) {
+              const message = buffer.slice(0, endOfMessageIndex);
+              buffer = buffer.slice(endOfMessageIndex + 2); // Skip the '\n\n'
 
-          read();
+              if (message.startsWith('data: ')) {
+                const data = message.substring(6); // Remove 'data: ' prefix
+                if (data.trim()) {
+                  self.zone.run(() => observer.next(data));
+                }
+              }
+            }
+          }
         })
         .catch((err) => {
-          self.zone.run(() => observer.error(err));
+          if (err.name !== 'AbortError') {
+             self.zone.run(() => observer.error(err));
+          }
         });
+      
+      // Return a teardown function to abort the fetch request
+      return () => {
+        controller.abort();
+      };
     });
   }
+
 
   listApps(): Observable<string[]> {
     if (this.apiServerDomain != undefined) {

@@ -4,7 +4,7 @@
     WORKDIR /app
     
     # Copy package configuration and install dependencies
-    COPY webui/package.json webui/package-lock.json ./
+    COPY webui/package.json ./
     RUN npm install
     
     # Copy the rest of the frontend source code
@@ -139,7 +139,10 @@
     COPY main.py /app/
     
     # Expose the port the app runs on
-    EXPOSE 8000
+    EXPOSE 8080
+
+    ENV PORT 8080
+    ENV HOST 0.0.0.0
     
     # The command to run the custom FastAPI server using uvicorn
-    CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]

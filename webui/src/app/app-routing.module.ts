@@ -20,14 +20,18 @@ import {AppComponent} from './app.component';
 
 const routes: Routes = [
   {
-    path: 'dev-ui',
+    // When the path is empty (which corresponds to /dev-ui/ because of baseHref),
+    // load the AppComponent directly. Do NOT redirect.
+    path: '',
     component: AppComponent,
   },
+  // It's good practice to have a wildcard route to handle any invalid paths
+  // on the client side and redirect them back to the main component.
   {
-    path: '',
-    redirectTo: 'dev-ui',
+    path: '**',
+    redirectTo: '',
     pathMatch: 'full',
-  },
+  }
 ];
 
 @NgModule({

@@ -10,6 +10,7 @@ dependencies = [
     "google-cloud-secret-manager",
     "python-dotenv",
     "google-cloud-storage", # Added dependency
+    "deprecated==1.2.18",
     "pydantic>=2.0" # Ensure pydantic is explicit if needed for Literal, etc.
 ]
 

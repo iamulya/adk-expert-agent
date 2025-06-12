@@ -52,7 +52,7 @@
                 }
               ],
               "outputHashing": "all",
-              "baseHref": "./",
+              "baseHref": "/dev-ui/",
               "deployUrl": "./"
             },
             "development": {
