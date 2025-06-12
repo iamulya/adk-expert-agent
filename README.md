@@ -254,6 +254,6 @@ cd adk-expert-agent
 
 * Especially during PDF and PPTX generation, the model can sometime randomly throw out a 500, even with queries that worked all the time in the past. I have tested it with the latest Gemini models and the 2.5 Pro gives the best results, however it can also throw 500 for the same query that it worked with in the last few times.
 
-* Sometimes when running the "Show me the main ADK components in a diagram" query, ever since I have started using the new Gemini 2.5 Pro (gemini-2.5-pro-preview-06-05 - the one recommended to be used to be future proof), the LLM responds non-stop with `<ctrl46>` which results in an abnormal behavior on the UI.  A refresh (to start a new session) and retrying the query after a bit of time usually helps to overcome the issue.
+* Sometimes when running the "Show me the main ADK components in a diagram" query, ever since I have started using the new Gemini 2.5 Pro (gemini-2.5-pro-preview-06-05 - the one recommended to be used to be future proof), the LLM responds non-stop with <ctrl46> which results in an abnormal behavior on the UI.  A refresh (to start a new session) and retrying the query after a bit of time usually helps to overcome the issue.
 
 * If an error occurs, it is almost always from LLM side. Retrying the same query (eventually after waiting a bit) solves the issue most of the time
