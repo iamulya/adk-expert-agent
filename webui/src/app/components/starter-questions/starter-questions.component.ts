@@ -11,7 +11,7 @@ export class StarterQuestionsComponent {
 
   // Define your static starter questions here
   starterQuestions: string[] = [
-    "What is Google ADK?",
+    "Write a multi-agent setup for HR onboarding",
     "Write unit tests for code_executor_context.py",
     "Explain in detail how a user query is processed in the Google ADK.",
     "Can you help with ADK GitHub issue #123?",

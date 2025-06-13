@@ -10,3 +10,6 @@ setup_webui.sh
 webui/package-lock.json
 webui/dist
 .angular
+.idea/
+docs/
+.ruff_cache/

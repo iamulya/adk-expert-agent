@@ -7,6 +7,7 @@ This repository contains a sophisticated agent built using Google's Agent Develo
 ## Features
 
 *   **ADK Expertise:** Answers general questions about Google ADK v1.2.0.
+*   **Write ADK Agents:** Help you design and even write ADK agents, for e.g. ask "write a multi-agent setup for HR onboarding" 
 *   **Debug and Fix errors:** Provide your ADK code including your query and the ADK expert agent will provide you guidance on how to solve the issues.
 *   **Generate Unit tests:** Use the ADK knowledge to create tests for the ADK components.
 *   **Evalsets for your own ADK Agents:** Provide your code to the expert agent and as long as the total amount of input tokens don't exceed 1 million, the expert agent will be able to create Evalsets for your own agents.
@@ -114,6 +115,10 @@ Further information around the architecture and design can be found here: https:
 **Home Page**
 
 ![Home Page](img/i2.png)
+
+**Helps you design and write ADK agents**
+
+![Helps you design and write ADK agents](img/i7.png)
 
 **Unit-Test Generation**
 
