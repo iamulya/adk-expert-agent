@@ -110,6 +110,11 @@ This repository contains a sophisticated agent built using Google's Agent Develo
 
 Further information around the architecture and design can be found here: https://deepwiki.com/iamulya/adk-expert-agent
 
+## ADK Expert Agent Demo
+
+https://github.com/user-attachments/assets/8301c269-0ce1-4a28-88c1-939dc2d716dd
+
+
 ## UI / Query Examples
 
 **Home Page**
