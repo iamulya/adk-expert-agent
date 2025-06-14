@@ -114,7 +114,7 @@ Further information around the architecture and design can be found here: https:
 
 **Home Page**
 
-![Home Page](img/i2.png)
+![Home Page](img/i8.png)
 
 **Helps you design and write ADK agents**
 
