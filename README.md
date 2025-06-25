@@ -204,7 +204,7 @@ cd adk-expert-agent
 4.  **Configure Environment Variables:**
     *   Copy `expert-agents/.env.example` to `expert-agents/.env`.
     *   Fill in the required values:
-        *   `GCP_PROJECT_ID`: Your Google Cloud Project ID (string, e.g., `my-gcp-project`).
+        *   `GCP_PROJECT_ID`: Your Google Cloud Project ID where secrets for GEMINI_API and GITHUB_API_PAT are saved (see below).
         *   `GCP_PROJECT_NUMBER`: Your Google Cloud Project Number (numeric, used for Secret Manager paths). You can get this from the GCP console or via `gcloud projects describe YOUR_PROJECT_ID --format='value(projectNumber)'`.
         *   `GEMINI_API_KEY_SECRET_ID`: Secret ID in Google Cloud Secret Manager for your Gemini API Key.
         *   `GITHUB_API_PAT_SECRET_ID`: Secret ID for your GitHub Personal Access Token (PAT) with read access to public repositories.
