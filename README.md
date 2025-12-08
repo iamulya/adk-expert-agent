@@ -256,14 +256,14 @@ cd adk-expert-agent
 
 ## Important Notes
 
-* Gemini 3 Pro Preview is being used as the model, so it can take good amount of time depending on the complexity of the queries, especially the ones that generate architectural diagrams, slides, pdf etc.
+* Gemini 3 Pro is being used as the model, so it can take good amount of time depending on the complexity of the queries, especially the ones that generate architectural diagrams, slides, pdf etc.
 
 * The Github issue guidance feature provides great output. I have already used it with real ADK issues where the agent output was really appreciated.
 
 * During Content generation (diagrams, pdf, pptx), the behavior can sometime be a bit random. I have seen in my tests that the exact same query can result a great output and other times in an error. Hence, keep in mind that the model can return erroneous mermaid output (primarily syntax errors) which may not be convertable into output files. In such cases, the markdown or the mermaid output from the model is provided as the agent response so that the user has the opportunity to correct any small issues that might exist.
 
-* Especially during PDF and PPTX generation, the model can sometime randomly throw out a 500, even with queries that worked all the time in the past. I have tested it with the latest Gemini models and the 3 Pro Preview gives the best results, however it can also throw 500 for the same query that it worked with in the last few times.
+* Especially during PDF and PPTX generation, the model can sometime randomly throw out a 500, even with queries that worked all the time in the past. I have tested it with the latest Gemini models and the 3 Pro gives the best results, however it can also throw 500 for the same query that it worked with in the last few times.
 
-* Sometimes when running a query, ever since the new Gemini 3 Pro Preview (gemini-3-pro-preview, the one recommended to be used to be future proof) is in use, the LLM responds non-stop with `ctrl46` which results in an abnormal behavior on the UI.  A refresh (to start a new session) and retrying the query after a bit of time usually helps to overcome the issue.
+* Sometimes when running a query, ever since the new Gemini 3 Pro is in use, the LLM responds non-stop with `ctrl46` which results in an abnormal behavior on the UI.  A refresh (to start a new session) and retrying the query after a bit of time usually helps to overcome the issue.
 
 * If an error occurs, it is almost always from LLM side. Retrying the same query (eventually after waiting a bit) solves the issue most of the time
