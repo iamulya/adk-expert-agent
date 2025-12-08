@@ -12,9 +12,9 @@ import os
 
 # The default model name to be used by agents and tools
 # Using a less powerful model by default can save costs for simpler tasks.
-DEFAULT_MODEL_NAME = "gemini-2.5-flash-preview-05-20"  # "gemini-2.5-flash-preview-04-17"#"gemini-2.5-pro-preview-05-06"
+DEFAULT_MODEL_NAME = "gemini-2.5-flash"  # "gemini-2.5-flash-preview-04-17"#"gemini-2.5-pro-preview-05-06"
 # A more powerful model for tasks that require higher quality generation, like creating documents or complex diagrams.
-PRO_MODEL_NAME = "gemini-2.5-pro-preview-06-05"  # The model name for the pro version
+PRO_MODEL_NAME = "gemini-3-pro-preview"  # The model name for the pro version
 
 # Global cache for the Gemini API key to avoid multiple fetches.
 _GEMINI_API_KEY = None
