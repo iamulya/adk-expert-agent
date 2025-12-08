@@ -2,7 +2,7 @@
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 # ADK Expert Agent with Document and Diagram Generation
 
-This repository contains a sophisticated agent built using Google's Agent Development Kit (ADK) v1.2.0. The agent serves as an expert on ADK, capable of answering questions about ADK, , help you debug and fix errors in your ADK code, even provide you guidance about any of ADK's GitHub issues, generate unit tests for ADK components and Evalsets for your own agents! It is also capable of generating documents (PDF, HTML, PPTX), and creating Mermaid architecture diagrams, related to any of your ADK queries.
+This repository contains a sophisticated agent built using Google's Agent Development Kit (ADK) v1.2.0. The agent serves as an expert on ADK, capable of answering questions about ADK, help you debug and fix errors in your ADK code, even provide you guidance about any of ADK's GitHub issues, generate unit tests for ADK components and Evalsets for your own agents! It is also capable of generating documents (PDF, HTML, PPTX), and creating Mermaid architecture diagrams, related to any of your ADK queries.
 
 ## Features
 
