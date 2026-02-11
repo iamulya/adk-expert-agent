@@ -1,6 +1,6 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/iamulya/adk-expert-agent)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![A2AS Certified](A2AS.org/certified/agents/iamulya/adk-expert-agent)](A2AS.org/certified/agents/iamulya/adk-expert-agent)
+[![A2AS-CERTIFIED](https://camo.githubusercontent.com/e8458e1efc37d96dbc9501aab16aaf88354f09814b00f9fbc7d2bcda2e3c9a10/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f413241532d4345525449464945442d663361663830)](https://www.a2as.org/certified/agents/iamulya/adk-expert-agent?utm_source=github&utm_medium=pull_request)
 
 # ADK Expert Agent with Document and Diagram Generation
 
