@@ -1,0 +1,595 @@
+manifest:
+  version: "0.1.3"
+  schema: https://a2as.org/cert/schema
+  subject:
+    name: iamulya/adk-expert-agent
+    source: https://github.com/iamulya/adk-expert-agent
+    branch: main
+    commit: "b3bd9c7f"
+    scope: [expert-agents/__init__.py, expert-agents/agent.py, expert-agents/agents/__init__.py, expert-agents/agents/document_generator_agent.py,
+      expert-agents/agents/github_issue_processing_agent.py, expert-agents/agents/mermaid_diagram_orchestrator_agent.py, expert-agents/agents/mermaid_syntax_generator_agent.py,
+      expert-agents/agents/mermaid_syntax_verifier_agent.py, expert-agents/callbacks.py, expert-agents/config.py, expert-agents/context_loader.py,
+      expert-agents/tools/__init__.py, expert-agents/tools/mermaid_to_png_and_upload_tool.py, expert-agents/tools/prepare_document_content_tool.py]
+  issued:
+    by: A2AS.org
+    at: '2026-02-11T16:42:47Z'
+    url: https://a2as.org/certified/agents/iamulya/adk-expert-agent
+  signatures:
+    digest: sha256:snajpqLnppCA3gMmD-mfvwH0n_brSeUhr-wqwrEgz94
+    key: ed25519:95tC69WWaJH0JOe-WhYbWcaT_MpcG703y0SzshcMpbI
+    sig: ed25519:CjnEnrgny5_m7RNxSoTeVe8NEJ8YNO_0Tjo9yPNGiNHkdx56VDpZm8BYjtwuSvni_rLccWOoYOQCtG0cIDgrCw
+
+agents:
+  adk_guidance_wrapper_agent:
+    type: instance
+    models: [gemini-2.5-flash]
+    tools: [ADKGuidanceTool]
+    params:
+      name: ADKGuidanceWrapperAgent
+      instruction: adk_guidance_instruction_provider
+      disallow_transfer_to_parent: "True"
+      disallow_transfer_to_peers: "True"
+      before_model_callback: log_prompt_before_model_call
+      generate_content_config:
+        class: GenerateContentConfig
+        temperature: "0"
+  document_generator_agent:
+    type: instance
+    models: [gemini-3-pro-preview]
+    tools: [_marp_pdf_tool_gcs, _marp_html_tool_gcs, _marp_pptx_tool_gcs]
+    params:
+      name: document_creation_specialist_agent
+      instruction: document_generator_instruction_provider
+      disallow_transfer_to_parent: "True"
+      disallow_transfer_to_peers: "True"
+      input_schema: DocumentGeneratorAgentToolInput
+      before_model_callback: log_prompt_before_model_call
+      after_agent_callback: document_generator_after_agent_cb
+      generate_content_config:
+        class: GenerateContentConfig
+        temperature: "0.0"
+  FormatOutputAgent:
+    type: instance
+    models: [gemini-2.5-flash]
+  get_issue_description_wrapper_agent:
+    type: instance
+    models: [gemini-2.5-flash]
+    tools: [GetGithubIssueDescriptionTool]
+    params:
+      name: GetIssueDescriptionWrapperAgent
+      instruction: get_issue_description_instruction_provider
+      disallow_transfer_to_parent: "True"
+      disallow_transfer_to_peers: "True"
+      before_model_callback: log_prompt_before_model_call
+      generate_content_config:
+        class: GenerateContentConfig
+        temperature: "0"
+  github_issue_processing_agent:
+    type: instance
+    params:
+      name: github_issue_processing_sequential_agent
+      description: 'Processes a GitHub issue by fetching its description and providing ADK-specific guidance. Input should
+        be a JSON string representing the issue details, like ''{"issue_number": "123"}''. Output will be a JSON string containing
+        the guidance or an error.'
+      sub_agents: [get_issue_description_wrapper_agent, adk_guidance_wrapper_agent, FormatOutputAgent]
+  mermaid_diagram_orchestrator_agent:
+    type: instance
+    models: [gemini-2.5-flash]
+    tools: [mermaid_syntax_generator_agent, mermaid_gcs_tool_instance]
+    params:
+      name: mermaid_diagram_orchestrator_agent
+      instruction: diagram_orchestrator_instruction_provider
+      input_schema: DiagramGeneratorAgentToolInput
+      disallow_transfer_to_parent: "True"
+      disallow_transfer_to_peers: "True"
+      before_model_callback: log_prompt_before_model_call
+      after_agent_callback: diagram_orchestrator_after_agent_cb
+      generate_content_config:
+        class: GenerateContentConfig
+        temperature: "0.0"
+  mermaid_syntax_generator_agent:
+    type: instance
+    models: [gemini-3-pro-preview]
+    params:
+      name: mermaid_syntax_generator_agent
+      instruction: mermaid_syntax_generator_instruction_provider
+      input_schema: MermaidSyntaxGeneratorAgentInput
+      disallow_transfer_to_parent: "True"
+      disallow_transfer_to_peers: "True"
+      before_model_callback: log_prompt_before_model_call
+      after_agent_callback: mermaid_syntax_generator_after_agent_cb
+      generate_content_config:
+        class: GenerateContentConfig
+        temperature: "0.0"
+  mermaid_syntax_verifier_agent:
+    type: instance
+    models: [gemini-2.5-flash]
+    params:
+      name: mermaid_syntax_verifier_agent
+      instruction: ['You are an expert in Mermaid diagram syntax. Your sole responsibility is to receive Mermaid syntax, verify
+          its correctness, and correct any syntax errors. If the provided syntax is already correct, return it as is. If there
+          are errors, return the corrected Mermaid syntax. Your output MUST ONLY be the Mermaid code block itself (e.g., ```mermaid',
+        "...", '```). Do not add any other explanations, greetings, or conversational text.']
+      description: Verifies and corrects Mermaid diagram syntax. Expects input as a JSON string with a 'mermaid_syntax' key.
+      input_schema: MermaidSyntaxVerifierAgentToolInput
+      disallow_transfer_to_parent: "True"
+      disallow_transfer_to_peers: "True"
+      generate_content_config:
+        class: GenerateContentConfig
+        temperature: "0.0"
+  root_agent:
+    type: instance
+    models: [gemini-2.5-flash]
+    tools: [github_issue_processing_agent, document_generator_agent, mermaid_diagram_orchestrator_agent, PrepareDocumentContentTool]
+    params:
+      name: adk_expert_orchestrator
+      instruction: root_agent_instruction_provider
+      before_model_callback: log_prompt_before_model_call
+      after_tool_callback: root_agent_after_tool_callback
+      generate_content_config:
+        class: GenerateContentConfig
+        temperature: "0.0"
+        max_output_tokens: "60000"
+        top_p: "0.6"
+
+models:
+  gemini-2.5-flash:
+    type: function
+    agents: [mermaid_syntax_verifier_agent, get_issue_description_wrapper_agent, adk_guidance_wrapper_agent, root_agent, mermaid_diagram_orchestrator_agent,
+      FormatOutputAgent]
+    params:
+      wrapper: Gemini
+      model: gemini-2.5-flash
+  gemini-3-pro-preview:
+    type: function
+    agents: [mermaid_syntax_generator_agent, document_generator_agent]
+    params:
+      wrapper: Gemini
+      model: gemini-3-pro-preview
+
+tools:
+  _marp_html_tool_gcs:
+    type: function
+    agents: [document_generator_agent]
+  _marp_pdf_tool_gcs:
+    type: function
+    agents: [document_generator_agent]
+  _marp_pptx_tool_gcs:
+    type: function
+    agents: [document_generator_agent]
+  document_generator_agent:
+    type: agent
+    agents: [root_agent]
+    params:
+      wrapper: AgentTool
+      agent: document_generator_agent
+  github_issue_processing_agent:
+    type: agent
+    agents: [root_agent]
+    params:
+      wrapper: AgentTool
+      agent: github_issue_processing_agent
+  mermaid_diagram_orchestrator_agent:
+    type: agent
+    agents: [root_agent]
+    params:
+      wrapper: AgentTool
+      agent: mermaid_diagram_orchestrator_agent
+  mermaid_gcs_tool_instance:
+    type: function
+    agents: [mermaid_diagram_orchestrator_agent]
+  mermaid_syntax_generator_agent:
+    type: agent
+    agents: [mermaid_diagram_orchestrator_agent]
+    params:
+      wrapper: AgentTool
+      agent: mermaid_syntax_generator_agent
+
+teams:
+  github_issue_processing_agent:
+    type: sequential
+    agents: [github_issue_processing_agent, get_issue_description_wrapper_agent, adk_guidance_wrapper_agent, FormatOutputAgent]
+
+imports:
+  _check_marp_cli: marp_utils._check_marp_cli
+  _upload_to_gcs_and_get_signed_url: marp_utils._upload_to_gcs_and_get_signed_url
+  ADKAgent: google.adk.agents.Agent
+  ADKGuidanceTool: adk_guidance_tool.ADKGuidanceTool
+  ADKGuidanceToolInput: adk_guidance_tool.ADKGuidanceToolInput
+  ADKGuidanceToolOutput: adk_guidance_tool.ADKGuidanceToolOutput
+  AgentTool: google.adk.tools.agent_tool.AgentTool
+  Any: typing.Any
+  API_KEY: config.API_KEY
+  AsyncGenerator: typing.AsyncGenerator
+  asyncio: asyncio
+  auth: google.auth
+  BaseAgent: google.adk.agents.BaseAgent
+  BaseModel: pydantic.BaseModel
+  BaseTool: google.adk.tools.BaseTool
+  BOILERPLATE_STRINGS_TO_REMOVE: github_utils.BOILERPLATE_STRINGS_TO_REMOVE
+  Browser: browser_use.Browser
+  BrowserConfig: browser_use.BrowserConfig
+  BrowserContextConfig: browser_use.BrowserContextConfig
+  BrowserUseAgent: browser_use.Agent
+  CallbackContext: google.adk.agents.callback_context.CallbackContext
+  ChatGoogleGenerativeAI: langchain_google_genai.ChatGoogleGenerativeAI
+  CleanGitHubIssueTextTool: clean_github_issue_text_tool.CleanGitHubIssueTextTool
+  CleanGitHubIssueTextToolInput: clean_github_issue_text_tool.CleanGitHubIssueTextToolInput
+  CleanGitHubIssueTextToolOutput: clean_github_issue_text_tool.CleanGitHubIssueTextToolOutput
+  ConstructGitHubUrlTool: construct_github_url_tool.ConstructGitHubUrlTool
+  ConstructGitHubUrlToolInput: construct_github_url_tool.ConstructGitHubUrlToolInput
+  ConstructGitHubUrlToolOutput: construct_github_url_tool.ConstructGitHubUrlToolOutput
+  datetime: datetime
+  DEFAULT_MODEL_NAME: config.DEFAULT_MODEL_NAME
+  DiagramGeneratorAgentToolInput: mermaid_diagram_orchestrator_agent.DiagramGeneratorAgentToolInput
+  Dict: typing.Dict
+  DOC_LINK_STATE_KEY: marp_utils.DOC_LINK_STATE_KEY
+  document_generator_agent: document_generator_agent.document_generator_agent
+  DocumentGeneratorAgentToolInput: document_generator_agent.DocumentGeneratorAgentToolInput
+  Event: google.adk.events.Event
+  exceptions: google.auth.exceptions
+  ExtractGitHubIssueDetailsTool: extract_github_issue_details_tool.ExtractGitHubIssueDetailsTool
+  ExtractGitHubIssueDetailsToolInput: extract_github_issue_details_tool.ExtractGitHubIssueDetailsToolInput
+  ExtractionResultInput: extract_github_issue_details_tool.ExtractionResultInput
+  Field: pydantic.Field
+  FunctionTool: google.adk.tools.FunctionTool
+  GCS_BUCKET_NAME: config.GCS_BUCKET_NAME
+  GCS_LINK_STATE_KEY: tools.mermaid_to_png_and_upload_tool.GCS_LINK_STATE_KEY
+  GCS_PROJECT_ID_FOR_BUCKET: config.GCS_PROJECT_ID_FOR_BUCKET
+  GCS_SIGNED_URL_SA_EMAIL: config.GCS_SIGNED_URL_SA_EMAIL
+  Gemini: google.adk.models.Gemini
+  genai_types: google.genai.types
+  generate_html_slides_from_markdown_with_gcs: marp_document_tools.generate_html_slides_from_markdown_with_gcs
+  generate_pdf_from_markdown_with_gcs: marp_document_tools.generate_pdf_from_markdown_with_gcs
+  generate_pptx_slides_from_markdown_with_gcs: marp_document_tools.generate_pptx_slides_from_markdown_with_gcs
+  GENERATED_DOCS_SUBDIR: marp_utils.GENERATED_DOCS_SUBDIR
+  get_escaped_adk_context_for_llm: context_loader.get_escaped_adk_context_for_llm
+  get_github_issue_description: github_issue_tool.get_github_issue_description
+  get_github_pat_from_secret_manager: github_utils.get_github_pat_from_secret_manager
+  GetGithubIssueDescriptionTool: github_issue_tool.GetGithubIssueDescriptionTool
+  github_issue_processing_agent: github_issue_processing_agent.github_issue_processing_agent
+  GitHubIssueProcessingInput: github_issue_processing_agent.GitHubIssueProcessingInput
+  HandleExtractionResultTool: handle_extraction_result_tool.HandleExtractionResultTool
+  HandleExtractionResultToolOutput: handle_extraction_result_tool.HandleExtractionResultToolOutput
+  impersonated_credentials: google.auth.impersonated_credentials
+  InvocationContext: google.adk.agents.invocation_context.InvocationContext
+  json: json
+  Literal: typing.Literal
+  LlmAgent: google.adk.agents.Agent
+  LlmRequest: google.adk.models.llm_request.LlmRequest
+  load_dotenv: dotenv.load_dotenv
+  log_prompt_before_model_call: callbacks.log_prompt_before_model_call
+  logging: logging
+  MARP_CLI_COMMAND: marp_utils.MARP_CLI_COMMAND
+  MERMAID_CLI_PATH: config.MERMAID_CLI_PATH
+  mermaid_diagram_orchestrator_agent: mermaid_diagram_orchestrator_agent.mermaid_diagram_orchestrator_agent
+  mermaid_gcs_tool_instance: tools.mermaid_to_png_and_upload_tool.mermaid_gcs_tool_instance
+  mermaid_syntax_generator_agent: mermaid_syntax_generator_agent.mermaid_syntax_generator_agent
+  mermaid_syntax_verifier_agent: mermaid_syntax_verifier_agent.mermaid_syntax_verifier_agent
+  MermaidSyntaxGeneratorAgentInput: mermaid_syntax_generator_agent.MermaidSyntaxGeneratorAgentInput
+  MermaidSyntaxVerifierAgentToolInput: mermaid_syntax_verifier_agent.MermaidSyntaxVerifierAgentToolInput
+  MermaidToPngAndUploadTool: mermaid_to_png_and_upload_tool.MermaidToPngAndUploadTool
+  Optional: typing.Optional
+  os: os
+  override: typing.override
+  Path: pathlib.Path
+  PrepareDocumentContentTool: prepare_document_content_tool.PrepareDocumentContentTool
+  PrepareDocumentContentToolInput: prepare_document_content_tool.PrepareDocumentContentToolInput
+  PRO_MODEL_NAME: config.PRO_MODEL_NAME
+  re: re
+  ReadonlyContext: google.adk.agents.readonly_context.ReadonlyContext
+  requests: requests
+  root_agent: agent.root_agent
+  secretmanager: google.cloud.secretmanager
+  SequentialAgent: google.adk.agents.SequentialAgent
+  SequentialProcessorFinalOutput: github_issue_processing_agent.SequentialProcessorFinalOutput
+  SIGNED_URL_EXPIRATION_SECONDS: config.SIGNED_URL_EXPIRATION_SECONDS
+  State: google.adk.sessions.state.State
+  storage: google.cloud.storage
+  subprocess: subprocess
+  tempfile: tempfile
+  ToolContext: google.adk.tools.ToolContext
+  uuid: uuid
+  ValidationError: pydantic.ValidationError
+
+functions:
+  __init__:
+    type: sync
+    module: expert-agents.tools.adk_guidance_tool
+    args: [self]
+  _check_marp_cli:
+    type: sync
+    module: expert-agents.tools.marp_utils
+  _generate_with_marp_and_upload:
+    type: async
+    module: expert-agents.tools.marp_document_tools
+    args: [markdown_content, output_filename_base, marp_format_flag, gcs_content_type, file_extension, tool_context]
+    params:
+      returns: str
+  _get_declaration:
+    type: sync
+    module: expert-agents.tools.adk_guidance_tool
+    args: [self]
+  _handle_marp_error_in_context:
+    type: sync
+    module: expert-agents.tools.marp_document_tools
+    args: [tool_context, error_message]
+  _run_async_impl:
+    type: async
+    module: expert-agents.agents.github_issue_processing_agent
+    args: [self, ctx]
+    params:
+      returns: AsyncGenerator
+  _upload_to_gcs_and_get_signed_url:
+    type: async
+    module: expert-agents.tools.marp_utils
+    args: [local_file_path, gcs_object_name_base, content_type, file_extension, tool_context, markdown_content_for_fallback]
+    params:
+      returns: str
+  adk_guidance_instruction_provider:
+    type: sync
+    module: expert-agents.agents.github_issue_processing_agent
+    args: [context]
+    params:
+      returns: str
+  clean_text_logic:
+    type: sync
+    module: expert-agents.tools.clean_github_issue_text_tool
+    args: [self, text]
+    params:
+      returns: str
+  diagram_orchestrator_after_agent_cb:
+    type: async
+    module: expert-agents.agents.mermaid_diagram_orchestrator_agent
+    args: [callback_context]
+  diagram_orchestrator_instruction_provider:
+    type: sync
+    module: expert-agents.agents.mermaid_diagram_orchestrator_agent
+    args: [context]
+    params:
+      returns: str
+  document_generator_after_agent_cb:
+    type: async
+    module: expert-agents.agents.document_generator_agent
+    args: [callback_context]
+  document_generator_instruction_provider:
+    type: sync
+    module: expert-agents.agents.document_generator_agent
+    args: [context]
+    params:
+      returns: str
+  generate_html_slides_from_markdown_with_gcs:
+    type: async
+    module: expert-agents.tools.marp_document_tools
+    args: [markdown_content, output_filename, tool_context]
+    params:
+      returns: str
+  generate_pdf_from_markdown_with_gcs:
+    type: async
+    module: expert-agents.tools.marp_document_tools
+    args: [markdown_content, output_filename, tool_context]
+    params:
+      returns: str
+  generate_pptx_slides_from_markdown_with_gcs:
+    type: async
+    module: expert-agents.tools.marp_document_tools
+    args: [markdown_content, output_filename, tool_context]
+    params:
+      returns: str
+  get_escaped_adk_context_for_llm:
+    type: sync
+    module: expert-agents.context_loader
+    params:
+      returns: str
+  get_gemini_api_key_from_secret_manager:
+    type: sync
+    module: expert-agents.config
+    params:
+      returns: str
+  get_github_pat_from_secret_manager:
+    type: sync
+    module: expert-agents.tools.github_utils
+    params:
+      returns: str
+  get_issue_description_instruction_provider:
+    type: sync
+    module: expert-agents.agents.github_issue_processing_agent
+    args: [context]
+    params:
+      returns: str
+  get_text_from_content:
+    type: sync
+    module: expert-agents.agent
+    args: [content]
+    params:
+      returns: str
+  get_user_content_text_from_readonly_context:
+    type: sync
+    module: expert-agents.agents.github_issue_processing_agent
+    args: [context]
+    params:
+      returns: str
+  load_raw_adk_context_file_once:
+    type: sync
+    module: expert-agents.context_loader
+  log_prompt_before_model_call:
+    type: sync
+    module: expert-agents.callbacks
+    args: [callback_context, llm_request]
+  mermaid_syntax_generator_after_agent_cb:
+    type: async
+    module: expert-agents.agents.mermaid_syntax_generator_agent
+    args: [callback_context]
+  mermaid_syntax_generator_instruction_provider:
+    type: sync
+    module: expert-agents.agents.mermaid_syntax_generator_agent
+    args: [context]
+    params:
+      returns: str
+  root_agent_after_tool_callback:
+    type: async
+    module: expert-agents.agent
+    args: [tool, args, tool_context, tool_response]
+    params:
+      returns: Optional[Any]
+  root_agent_instruction_provider:
+    type: sync
+    module: expert-agents.agent
+    args: [context]
+    params:
+      returns: str
+  run_async:
+    type: async
+    module: expert-agents.tools.adk_guidance_tool
+    args: [self, args, tool_context]
+    params:
+      returns: Dict
+
+variables:
+  GCP_PROJECT_NUMBER:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [expert-agents.config, expert-agents.tools.github_utils]
+  GCS_BUCKET_NAME_FOR_DOCS:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [expert-agents.config]
+  GCS_PROJECT_ID_FOR_DOCS_BUCKET:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [expert-agents.config]
+  GCS_SIGNED_URL_SA_EMAIL:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [expert-agents.config]
+  GEMINI_API_KEY_SECRET_ID:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [expert-agents.config]
+  GEMINI_API_KEY_SECRET_VERSION:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [expert-agents.config]
+  GITHUB_API_PAT_SECRET_ID:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [expert-agents.tools.github_utils]
+  GITHUB_API_PAT_SECRET_VERSION:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [expert-agents.tools.github_utils]
+  GOOGLE_API_KEY:
+    type: env
+    params:
+      caller: [os.environ]
+  MERMAID_CLI_PATH:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [expert-agents.config]
+  PUPPETEER_CONFIG_PATH:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [expert-agents.tools.mermaid_to_png_and_upload_tool]
+  SIGNED_URL_EXPIRATION_SECONDS:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [expert-agents.config]
+
+files:
+  .md:
+    type: literal
+    actions: [write]
+    params:
+      caller: [tempfile.NamedTemporaryFile]
+      mode: w+
+      delete: "False"
+      encoding: utf-8
+  .mmd:
+    type: literal
+    actions: [write]
+    params:
+      caller: [tempfile.NamedTemporaryFile]
+      mode: w
+      delete: "False"
+      encoding: utf-8
+  .png:
+    type: literal
+    actions: [write]
+    params:
+      caller: [tempfile.NamedTemporaryFile]
+      delete: "False"
+  ADK_CONTEXT_DATA_FILE:
+    type: variable
+    actions: [read]
+    params:
+      caller: [open]
+      alias: [f]
+  GENERATED_DOCS_SUBDIR:
+    type: pattern
+    actions: [read]
+    params:
+      caller: [os.path.join]
+      pattern: [tempfile.gettempdir(), GENERATED_DOCS_SUBDIR]
+  google-adk-python-1.2.0.txt:
+    type: literal
+    actions: [read]
+    params:
+      path: [Path.parent]
+  local_marp_output_dir:
+    type: variable
+    actions: [read]
+    params:
+      caller: [os.makedirs]
+  local_output_path:
+    type: variable
+    actions: [read, delete]
+    params:
+      caller: [os.path.exists, os.remove]
+
+processes:
+  marp:
+    type: shell
+    actions: [exec]
+    args: [[--version]]
+    params:
+      caller: [subprocess.run]
+      shell: ["False"]
+
+networks:
+  api.github.com:
+    type: api
+    actions: [GET]
+    urls: ['/{...}']
+    protocols: [https]
+    ports: ["443"]
+    params:
+      caller: [run_async]
+  public_url:
+    type: api
+    actions: [GET]
+    protocols: [https]
+    params:
+      pattern: <https://storage.googleapis.com/{GCS_BUCKET_NAME}/{gcs_object_name}>
+      caller: [_upload_to_gcs_and_get_signed_url, run_async]
+      dynamic: "True"
+      variable: public_url
+  url:
+    type: api
+    actions: [GET]
+    protocols: [https]
+    params:
+      pattern: <https://github.com/google/adk-python/issues/{issue_number}>
+      caller: [run_async]
+      dynamic: "True"
+      variable: url
